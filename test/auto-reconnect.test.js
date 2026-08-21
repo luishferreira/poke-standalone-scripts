@@ -231,6 +231,45 @@ test('saída manual desativa a hunt e não causa reentrada automática', async (
 
   await harness.tick(20_000);
   assert.equal(harness.api.status().huntActive, false);
+  assert.equal(harness.api.status().huntSlug, null);
+  assert.equal(
+    JSON.parse(harness.storage.get('piw_hunt_watchdog_v1')).huntSlug,
+    null,
+  );
+  assert.deepEqual(socket.sent, []);
+});
+
+test('pausar preserva a hunt e retomar reativa o watchdog mesmo sem mensagens', async () => {
+  const harness = createHarness();
+  const socket = harness.captureSocket();
+  socket.send(JSON.stringify({ type: 'enter-hunt', slug: 'stuck-route' }));
+  socket.sent = [];
+
+  harness.api.stop();
+  await harness.tick(20_000);
+  assert.equal(harness.api.status().huntActive, true);
+  assert.deepEqual(socket.sent, []);
+
+  harness.api.start();
+  await harness.tick(10_500);
+  assert.deepEqual(socket.sent, [
+    { type: 'leave-hunt' },
+    { type: 'enter-hunt', slug: 'stuck-route' },
+  ]);
+});
+
+test('leave-hunt manual durante a pausa limpa o contexto antes de retomar', async () => {
+  const harness = createHarness();
+  const socket = harness.captureSocket();
+  socket.send(JSON.stringify({ type: 'enter-hunt', slug: 'paused-route' }));
+  harness.api.stop();
+  socket.send(JSON.stringify({ type: 'leave-hunt' }));
+  socket.sent = [];
+
+  harness.api.start();
+  await harness.tick(20_000);
+  assert.equal(harness.api.status().huntActive, false);
+  assert.equal(harness.api.status().huntSlug, null);
   assert.deepEqual(socket.sent, []);
 });
 

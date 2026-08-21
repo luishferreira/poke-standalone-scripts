@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Auto reconnect
 // @namespace    http://tampermonkey.net/
-// @version      2026-08-20.5
+// @version      2026-08-20.7
 // @description  auto reconecta e pula mega sableye
 // @author       Luis
 // @match        https://poke.idleworld.online/play
@@ -102,8 +102,8 @@
     panel.querySelector('[data-phw="recoveries"]').textContent = String(state.recoveries);
     panel.querySelector('[data-phw="sableye"]').textContent = String(state.megaSableyeEscapes);
     panel.querySelector('.phw-sableye').textContent = state.skipMegaSableye
-      ? 'Pular Mega: ligado'
-      : 'Pular Mega: desligado';
+      ? 'Pular Sableye: ligado'
+      : 'Pular Sableye: desligado';
     panel.querySelector('.phw-sableye').classList.toggle('phw-disabled', !state.skipMegaSableye);
     panel.querySelector('[data-phw="status"]').textContent = state.transitioning
       ? 'Reconectando na hunt...'
@@ -168,7 +168,7 @@
           <button class="phw-toggle" type="button">Pausar</button>
           <button class="phw-reconnect" type="button">Reconectar</button>
         </div>
-        <button class="phw-sableye" type="button">Pular Mega: ligado</button>
+        <button class="phw-sableye" type="button">Pular Sableye: ligado</button>
       </div>`;
     document.body.appendChild(panel);
     panel.querySelector('.phw-close').addEventListener('click', () => { panel.hidden = true; });
@@ -251,6 +251,9 @@
       log('Hunt acompanhada.', { slug: state.huntSlug });
     } else if (message?.type === 'leave-hunt' && !state.transitioning) {
       state.huntActive = false;
+      state.huntSlug = null;
+      state.lastHuntMessageAt = 0;
+      saveState();
       log('Saída manual detectada; watchdog aguardando nova hunt.');
     }
   }
@@ -356,7 +359,6 @@
     },
     stop() {
       state.enabled = false;
-      state.huntActive = false;
       log('Supervisão pausada.');
     },
     start() {

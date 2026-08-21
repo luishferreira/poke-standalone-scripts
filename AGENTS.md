@@ -40,12 +40,13 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 - Após 10 segundos sem mensagem de hunt, envia `leave-hunt`, espera 500 ms e envia `enter-hunt` com o último slug.
 - Usa cooldown de 5 segundos para impedir recuperações concorrentes.
 - Também pode sair e voltar quando um `field` contém Mega Sableye. Essa fuga é ativada por padrão, pode ser desligada no painel e persiste por aba.
+- Pausar preserva o contexto da hunt para que retomar volte a monitorá-la imediatamente. Um `leave-hunt` manual, inclusive durante a pausa, encerra o contexto e limpa o slug salvo; a saída interna de uma recuperação preserva o slug.
 - Configuração do slug fica em `piw_hunt_watchdog_v1`; API pública fica em `window.piwHuntWatchdog`.
 
 ### `auto-boss.user.js`
 
 - Userscript de boss executado em `document-idle`.
-- Usa o global legado `window.myGameSocket` e adiciona um painel no `nav.game-dock`.
+- Usa a API v1 de `window.piwScripts.wsBridge`, incorporada antes da feature pelo build. Mantém exatamente um subscriber durante toda a instalação e adiciona um painel no `nav.game-dock`.
 - Entra no slug configurado, acompanha HP, vitórias, derrotas e até dez registros de loot.
 - `field.bossOutcome` é a única confirmação de término: `won` é vitória e qualquer outro valor truthy é derrota. `fainted` de Pokémon individuais não encerra a luta e não controla o lifecycle.
 - Após qualquer `bossOutcome`, sai, envia `joy-heal` fora da luta e então reentra ou conclui a parada agendada.
@@ -77,7 +78,7 @@ Os três scripts próprios podem rodar na mesma página e o usuário também ins
 
 ### Interceptação do WebSocket deve ser cooperativa
 
-- Auto Boss e PIW-QOL ainda mantêm hooks próprios no WebSocket; a ordem de carregamento do Tampermonkey pode mudar o encadeamento. Auto Catch e Auto Reconnect usam exclusivamente o bridge.
+- O PIW-QOL ainda mantém hooks próprios no WebSocket; a ordem de carregamento do Tampermonkey pode mudar o encadeamento. Os três scripts próprios usam exclusivamente o bridge.
 - Ao manter os arquivos atuais, capture a implementação anterior, encaminhe com o mesmo `this` e `arguments`, e nunca engula um envio do jogo sem decisão explícita da feature.
 - Não faça `WebSocket.prototype.send = originalSend` no uninstall se outro script instalou um wrapper depois do seu. Só restaure quando o valor atual ainda for exatamente o wrapper daquele módulo.
 - Não use uma variável global genérica nova como `window.myGameSocket`. Use namespace do projeto, por exemplo `window.piwScripts`, e mantenha aliases legados apenas para compatibilidade documentada.
@@ -94,7 +95,7 @@ Os três scripts próprios podem rodar na mesma página e o usuário também ins
 - deduplicar listeners;
 - permitir cleanup por feature.
 
-O bridge por si só é passivo: instalar não abre conexão nem envia mensagens. Ele encadeia o construtor e o `send` encontrados, aceita wrapper externo antes ou depois, isola erros de subscribers e ignora mensagens do socket substituído. Atualmente é incorporado ao `auto-catch.user.js` e ao `auto-reconnect.user.js`; ambos usam `subscribe` para lifecycle/mensagens e `sendJson` para seus envios, sem hooks próprios. Auto Boss ainda não recebe o módulo. Uma feature nunca deve chamar `bridge.uninstall()`; seu cleanup remove somente o próprio subscriber.
+O bridge por si só é passivo: instalar não abre conexão nem envia mensagens. Ele encadeia o construtor e o `send` encontrados, aceita wrapper externo antes ou depois, isola erros de subscribers e ignora mensagens do socket substituído. Atualmente é incorporado aos três userscripts; todos usam `subscribe` para lifecycle/mensagens e `sendJson` para seus envios, sem hooks próprios. Uma feature nunca deve chamar `bridge.uninstall()`; seu cleanup remove somente o próprio subscriber.
 
 ## Estado e persistência no navegador
 
@@ -177,7 +178,7 @@ Regras do build:
 - Edite somente a fonte correspondente em `src` e incremente ali o `@version`; nunca corrija diretamente um `.user.js` gerado.
 - Execute `npm run build` para regenerar os três artefatos. O output é determinístico e não contém timestamp.
 - `npm run build:check` não escreve arquivos e falha quando um artefato está ausente ou difere da fonte.
-- Módulos da lista global `shared` são incorporados antes de todas as features; cada entrada também pode declarar sua própria lista para rollout gradual. O bridge está nas entradas do Auto Catch e do Auto Reconnect; o Auto Boss permanece isolado enquanto não for migrado.
+- Módulos da lista global `shared` são incorporados antes de todas as features; cada entrada também pode declarar sua própria lista para rollout gradual. O bridge está nas entradas dos três userscripts.
 - O arquivo entregue ao Tampermonkey deve continuar sendo um único userscript autocontido; não introduza `@require` nem outro userscript obrigatório.
 - O bloco `// ==UserScript==` deve ser o primeiro conteúdo do artefato e preservar `@name`, `@namespace`, `@match`, `@grant` e `@run-at` corretos.
 - Não introduza framework/bundler pesado sem necessidade. O build atual usa somente módulos nativos do Node.js.

@@ -6,7 +6,7 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'auto-boss.user.js'), 'utf8');
 
-function createHarness(savedState = null) {
+function createHarness(savedState = null, { beforeInstall = null } = {}) {
     let now = 0;
     let nextTimerId = 1;
     const timers = new Map();
@@ -89,6 +89,7 @@ function createHarness(savedState = null) {
         setTimeout(callback, delay) { return setTimer(callback, delay, 0); }
     };
     context.window = context;
+    beforeInstall?.(context);
     vm.runInNewContext(source, context);
 
     function tick(milliseconds) {
@@ -109,18 +110,52 @@ function createHarness(savedState = null) {
     }
 
     function captureSocket(url) {
-        const socket = new FakeWebSocket(url);
+        const socket = new context.WebSocket(url);
         socket.send(JSON.stringify({ type: 'bootstrap-test' }));
         socket.sent = [];
         return socket;
     }
 
-    return { api: context.piwBossFarm, captureSocket, context, storage, tick };
+    function reinject() {
+        vm.runInContext(source, context);
+    }
+
+    return { api: context.piwBossFarm, captureSocket, context, reinject, storage, tick };
 }
 
 function sentTypes(socket) {
     return socket.sent.map(message => message.type);
 }
+
+function installQolLikeWrapper(context, observedTypes) {
+    const PreviousWebSocket = context.WebSocket;
+    const previousSend = PreviousWebSocket.prototype.send;
+
+    function TrackedWebSocket(url, protocols) {
+        return protocols === undefined
+            ? new PreviousWebSocket(url)
+            : new PreviousWebSocket(url, protocols);
+    }
+    TrackedWebSocket.prototype = PreviousWebSocket.prototype;
+    Object.setPrototypeOf(TrackedWebSocket, PreviousWebSocket);
+    context.WebSocket = TrackedWebSocket;
+    PreviousWebSocket.prototype.send = function trackedSend(data) {
+        observedTypes.push(JSON.parse(data)?.type || null);
+        return previousSend.apply(this, arguments);
+    };
+}
+
+test('Auto Boss usa um único subscriber persistente e não cria myGameSocket', () => {
+    const harness = createHarness();
+    const bridge = harness.context.piwScripts.wsBridge;
+    const socket = harness.captureSocket();
+
+    assert.equal(bridge.status().subscribers, 1);
+    assert.equal(bridge.getSocket(), socket);
+    assert.equal(harness.context.myGameSocket, undefined);
+    harness.reinject();
+    assert.equal(bridge.status().subscribers, 1);
+});
 
 test('ignora fainted individual e finaliza vitória com leave, heal e nova entrada', () => {
     const harness = createHarness();
@@ -257,4 +292,48 @@ test('estado inválido do sessionStorage é normalizado', () => {
     assert.equal(status.wins, 0);
     assert.equal(status.losses, 3);
     assert.deepEqual([...status.lootHistory], ['ok']);
+});
+
+test('uninstall remove somente o subscriber do Auto Boss', () => {
+    const harness = createHarness();
+    const bridge = harness.context.piwScripts.wsBridge;
+    harness.captureSocket();
+    assert.equal(bridge.status().subscribers, 1);
+
+    harness.api.uninstall();
+    assert.equal(bridge.status().subscribers, 0);
+    assert.equal(harness.context.piwScripts.wsBridge, bridge);
+    assert.equal(harness.context.piwBossFarm, undefined);
+    assert.equal(harness.context.piwBossFarmInjected, undefined);
+});
+
+test('não duplica o ciclo do Boss com wrapper externo antes ou depois do bundle', () => {
+    for (const wrapperOrder of ['before', 'after']) {
+        const observedTypes = [];
+        const harness = createHarness(null, {
+            beforeInstall: wrapperOrder === 'before'
+                ? context => installQolLikeWrapper(context, observedTypes)
+                : null
+        });
+        if (wrapperOrder === 'after') installQolLikeWrapper(harness.context, observedTypes);
+
+        const socket = harness.captureSocket();
+        observedTypes.length = 0;
+        socket.sent = [];
+        assert.equal(harness.api.start(), true, wrapperOrder);
+        socket.emit('message', { type: 'field', bossOutcome: 'won', bossLoot: [] });
+        harness.tick(3000);
+
+        assert.deepEqual(
+            sentTypes(socket),
+            ['enter-hunt', 'leave-hunt', 'joy-heal', 'enter-hunt'],
+            wrapperOrder
+        );
+        assert.deepEqual(
+            observedTypes,
+            ['enter-hunt', 'leave-hunt', 'joy-heal', 'enter-hunt'],
+            wrapperOrder
+        );
+        assert.equal(harness.context.piwScripts.wsBridge.status().subscribers, 1, wrapperOrder);
+    }
 });

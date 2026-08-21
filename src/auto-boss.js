@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Auto Boss Farmer PIW
-// @version      1.2.4
+// @version      1.3.0
 // @description  Painel para farmar Bosses com HUD, cura entre lutas e parada agendada.
 // @author       Luis
 // @match        https://poke.idleworld.online/play
@@ -14,6 +14,13 @@
     'use strict';
 
     if (window.piwBossFarm?.installed || window.piwBossFarmInjected) return;
+
+    const bridge = window.piwScripts?.wsBridge;
+    if (!bridge || bridge.apiVersion !== 1) {
+        console.warn('[PIW Auto Boss] PIW WS Bridge v1 indisponível. Auto Boss não instalado.');
+        return;
+    }
+
     window.piwBossFarmInjected = true;
 
     const STORAGE_KEY = 'piw_boss_farm_v1';
@@ -30,7 +37,7 @@
     let watchdogTimer = null;
     let interfaceObserver = null;
     let observerTimer = null;
-    const socketBindings = new Map();
+    let unsubscribeBridge = null;
 
     function blankState() {
         return {
@@ -140,85 +147,27 @@
         }, WATCHDOG_CHECK_MS);
     }
 
-    function parseFrame(data) {
-        if (typeof data !== 'string') return null;
-        try {
-            return JSON.parse(data);
-        } catch {
-            return null;
-        }
-    }
-
-    function isGameSocket(socket) {
-        return typeof socket?.url === 'string' && socket.url.includes('/ws');
-    }
-
-    function setCurrentSocket(socket) {
-        if (!isGameSocket(socket) || gameSocket === socket) return;
+    function adoptSocket(socket) {
+        if (!socket || gameSocket === socket) return;
         const replacedActiveSocket = Boolean(gameSocket && (state.running || isTransitioning));
         if (replacedActiveSocket) {
             pauseFarm('⚠️ O WebSocket foi substituído. Automação pausada sem iniciar outro Boss.');
         }
         gameSocket = socket;
-        window.myGameSocket = socket;
         if (!replacedActiveSocket && !state.running && !isTransitioning) {
             setMessage('✅ Conexão capturada! Pronto para iniciar.');
             renderPanel();
         }
     }
 
-    function detachSocket(socket) {
-        const binding = socketBindings.get(socket);
-        if (!binding) return;
-        socket.removeEventListener('message', binding.onMessage);
-        socket.removeEventListener('open', binding.onOpen);
-        socket.removeEventListener('close', binding.onClose);
-        socketBindings.delete(socket);
-    }
-
-    function attachSocket(socket) {
-        if (!isGameSocket(socket) || socketBindings.has(socket)) return;
-        const onMessage = event => handleSocketMessage(socket, event);
-        const onOpen = () => setCurrentSocket(socket);
-        const onClose = () => {
-            if (gameSocket === socket) {
-                gameSocket = null;
-                if (window.myGameSocket === socket) window.myGameSocket = null;
-                if (state.running || isTransitioning) {
-                    pauseFarm('⚠️ WebSocket fechado. Automação pausada sem reentrada automática.');
-                } else {
-                    setMessage('⚠️ WebSocket fechado. Aguardando uma nova conexão.', true);
-                    renderPanel();
-                }
-            }
-            detachSocket(socket);
-        };
-        socketBindings.set(socket, { onMessage, onOpen, onClose });
-        socket.addEventListener('message', onMessage);
-        socket.addEventListener('open', onOpen);
-        socket.addEventListener('close', onClose);
-        setCurrentSocket(socket);
-    }
-
-    const previousSend = WebSocket.prototype.send;
-    const patchedSend = function patchedSend(data) {
-        if (isGameSocket(this)) attachSocket(this);
-        return previousSend.apply(this, arguments);
-    };
-    WebSocket.prototype.send = patchedSend;
-
     function sendWs(payload) {
-        if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) return false;
-        try {
-            previousSend.call(gameSocket, JSON.stringify(payload));
-            return true;
-        } catch (error) {
-            console.warn('[PIW Auto Boss] Falha ao enviar mensagem.', {
-                type: payload?.type,
-                message: error.message
-            });
-            return false;
+        gameSocket = bridge.getSocket();
+        if (!gameSocket || !bridge.isOpen()) return false;
+        const sent = bridge.sendJson(payload);
+        if (!sent) {
+            console.warn('[PIW Auto Boss] Falha ao enviar mensagem.', { type: payload?.type });
         }
+        return sent;
     }
 
     function buildLootText(message) {
@@ -287,9 +236,8 @@
         });
     }
 
-    function handleSocketMessage(socket, event) {
+    function handleSocketMessage(socket, message) {
         if (socket !== gameSocket || !state.running) return;
-        const message = parseFrame(event.data);
         if (message?.type !== 'field') return;
         lastActivity = Date.now();
         if (isTransitioning) return;
@@ -311,7 +259,32 @@
         );
     }
 
-    if (isGameSocket(window.myGameSocket)) attachSocket(window.myGameSocket);
+    function handleSocketClose(socket) {
+        if (gameSocket !== socket) return;
+        gameSocket = null;
+        if (state.running || isTransitioning) {
+            pauseFarm('⚠️ WebSocket fechado. Automação pausada sem reentrada automática.');
+        } else {
+            setMessage('⚠️ WebSocket fechado. Aguardando uma nova conexão.', true);
+            renderPanel();
+        }
+    }
+
+    unsubscribeBridge = bridge.subscribe({
+        socket(event) {
+            adoptSocket(event.socket);
+        },
+        open(event) {
+            adoptSocket(event.socket);
+        },
+        close(event) {
+            handleSocketClose(event.socket);
+        },
+        incoming(event) {
+            handleSocketMessage(event.socket, event.message);
+        }
+    });
+    adoptSocket(bridge.getSocket());
 
     function startFarm() {
         if (isTransitioning) {
@@ -554,9 +527,8 @@
         state.running = false;
         state.stopping = false;
         saveState();
-        for (const socket of [...socketBindings.keys()]) detachSocket(socket);
-        if (WebSocket.prototype.send === patchedSend) WebSocket.prototype.send = previousSend;
-        if (window.myGameSocket === gameSocket) window.myGameSocket = null;
+        unsubscribeBridge?.();
+        unsubscribeBridge = null;
         gameSocket = null;
         interfaceObserver?.disconnect();
         interfaceObserver = null;

@@ -12,8 +12,6 @@ Com o repositório público, abra o script desejado e confirme a instalação no
 
 Os scripts verificam atualizações usando esses mesmos endereços. Uma atualização só é reconhecida pelo Tampermonkey quando o campo `@version` do userscript aumenta.
 
-> Enquanto o repositório estiver privado, os links públicos de instalação e atualização não funcionarão para o Tampermonkey.
-
 ## Desenvolvimento e build
 
 Os arquivos em `src/` são as fontes canônicas. Os `.user.js` da raiz são gerados e não devem ser editados manualmente.
@@ -33,7 +31,7 @@ git config core.hooksPath .githooks
 
 Antes de cada commit, ele executa `npm run verify`, exige que fontes e artefatos gerados sejam adicionados juntos e valida o incremento de `@version` dos userscripts alterados. A mesma checagem pode ser executada manualmente com `npm run check:commit`.
 
-O build aceita módulos compartilhados globais ou por userscript em `scripts/userscripts.config.js`. Atualmente o WebSocket bridge é incorporado ao Auto Catch e ao Auto Reconnect. Cada feature mantém um subscriber persistente para lifecycle/mensagens e envia pelo próprio bridge; com ambos instalados, o diagnóstico mostra dois subscribers. O Auto Boss continua sem o módulo.
+O build aceita módulos compartilhados globais ou por userscript em `scripts/userscripts.config.js`. Atualmente o WebSocket bridge é incorporado aos três userscripts. Cada feature mantém um subscriber persistente para lifecycle/mensagens e envia pelo próprio bridge; a contagem de diagnóstico corresponde à quantidade de features instaladas na aba.
 
 ## Observação
 

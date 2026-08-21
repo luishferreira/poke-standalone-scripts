@@ -13,6 +13,7 @@ module.exports = {
     {
       input: 'src/auto-boss.js',
       output: 'auto-boss.user.js',
+      shared: ['src/shared/ws-bridge.js'],
     },
     {
       input: 'src/auto-reconnect.js',
