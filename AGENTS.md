@@ -20,7 +20,7 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 ### `auto-catch.user.js`
 
 - Userscript próprio, namespace `poke-manager`, executado em `document-start`.
-- Captura o socket do jogo ao observar `WebSocket.prototype.send` e anexa um listener de `message` uma única vez por socket com `WeakSet`.
+- Usa a API v1 de `window.piwScripts.wsBridge`, incorporada antes da feature pelo build. Mantém exatamente um subscriber durante toda a instalação, inclusive quando a automação está pausada.
 - A mensagem `pending` mais recente substitui completamente a fila local e é a fonte de verdade dos alvos ainda disponíveis.
 - Envia `{ type: 'catch', pendingId, ballId }`, com apenas uma captura em voo.
 - Respeita jitter obrigatório de 4,2 a 5,0 segundos entre envios; o mínimo não deve ser reduzido.
@@ -76,7 +76,7 @@ Os três scripts próprios podem rodar na mesma página e o usuário também ins
 
 ### Interceptação do WebSocket deve ser cooperativa
 
-- Hoje há scripts que substituem o construtor e outros que sobrescrevem `WebSocket.prototype.send`. A ordem de carregamento do Tampermonkey pode mudar o encadeamento.
+- Auto Boss, Auto Reconnect e PIW-QOL ainda mantêm hooks próprios no WebSocket; a ordem de carregamento do Tampermonkey pode mudar o encadeamento. Auto Catch já usa exclusivamente o bridge.
 - Ao manter os arquivos atuais, capture a implementação anterior, encaminhe com o mesmo `this` e `arguments`, e nunca engula um envio do jogo sem decisão explícita da feature.
 - Não faça `WebSocket.prototype.send = originalSend` no uninstall se outro script instalou um wrapper depois do seu. Só restaure quando o valor atual ainda for exatamente o wrapper daquele módulo.
 - Não use uma variável global genérica nova como `window.myGameSocket`. Use namespace do projeto, por exemplo `window.piwScripts`, e mantenha aliases legados apenas para compatibilidade documentada.
@@ -93,7 +93,7 @@ Os três scripts próprios podem rodar na mesma página e o usuário também ins
 - deduplicar listeners;
 - permitir cleanup por feature.
 
-O bridge é passivo: instalar não abre conexão nem envia mensagens. Ele encadeia o construtor e o `send` encontrados, aceita wrapper externo antes ou depois, isola erros de subscribers e ignora mensagens do socket substituído. No rollout canário atual, ele é incorporado somente ao `auto-catch.user.js`, mas a feature ainda mantém seus hooks antigos e não registra subscriber no bridge. Auto Boss e Auto Reconnect ainda não recebem o módulo. Quando a migração começar, features não devem manter patches próprios depois de passarem a usar o bridge.
+O bridge por si só é passivo: instalar não abre conexão nem envia mensagens. Ele encadeia o construtor e o `send` encontrados, aceita wrapper externo antes ou depois, isola erros de subscribers e ignora mensagens do socket substituído. Atualmente é incorporado somente ao `auto-catch.user.js`; o Auto Catch usa `subscribe` para lifecycle/entrada e `sendJson` para `balls-get`/`catch`, sem hooks próprios. Auto Boss e Auto Reconnect ainda não recebem o módulo. Uma feature nunca deve chamar `bridge.uninstall()`; seu cleanup remove somente o próprio subscriber.
 
 ## Estado e persistência no navegador
 
@@ -176,7 +176,7 @@ Regras do build:
 - Edite somente a fonte correspondente em `src` e incremente ali o `@version`; nunca corrija diretamente um `.user.js` gerado.
 - Execute `npm run build` para regenerar os três artefatos. O output é determinístico e não contém timestamp.
 - `npm run build:check` não escreve arquivos e falha quando um artefato está ausente ou difere da fonte.
-- Módulos da lista global `shared` são incorporados antes de todas as features; cada entrada também pode declarar sua própria lista para rollout gradual. O bridge permanece restrito à entrada do Auto Catch até o canário ser validado no navegador.
+- Módulos da lista global `shared` são incorporados antes de todas as features; cada entrada também pode declarar sua própria lista para rollout gradual. O bridge permanece restrito à entrada do Auto Catch enquanto as demais features não forem migradas.
 - O arquivo entregue ao Tampermonkey deve continuar sendo um único userscript autocontido; não introduza `@require` nem outro userscript obrigatório.
 - O bloco `// ==UserScript==` deve ser o primeiro conteúdo do artefato e preservar `@name`, `@namespace`, `@match`, `@grant` e `@run-at` corretos.
 - Não introduza framework/bundler pesado sem necessidade. O build atual usa somente módulos nativos do Node.js.

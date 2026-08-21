@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Auto Catch
 // @namespace    poke-manager
-// @version      1.4.3
+// @version      1.5.0
 // @description  Captura automaticamente os Pokémon pendentes usando o WebSocket do jogo.
 // @author       Keita
 // @match        https://poke.idleworld.online/play*
@@ -298,6 +298,12 @@
     return;
   }
 
+  const bridge = window.piwScripts?.wsBridge;
+  if (!bridge || bridge.apiVersion !== 1) {
+    console.warn('[PIW Auto Catch] PIW WS Bridge v1 indisponível. Auto Catch não instalado.');
+    return;
+  }
+
   const MIN_CATCH_DELAY_MS = 4_200;
   const MAX_CATCH_DELAY_MS = 5_000;
   const CATCH_RESPONSE_TIMEOUT_MS = 5_000;
@@ -340,8 +346,6 @@
 
   const savedSettings = loadSettings();
 
-  const originalSend = WebSocket.prototype.send;
-  const attachedSockets = new WeakSet();
   const state = {
     enabled: savedSettings.enabled,
     socket: null,
@@ -367,6 +371,7 @@
     failures: 0,
   };
   let interfaceObserver = null;
+  let unsubscribeBridge = null;
 
   function saveSettings() {
     try {
@@ -561,19 +566,6 @@
     interfaceObserver.observe(document.documentElement, { childList: true, subtree: true });
   }
 
-  function parseFrame(data) {
-    if (typeof data !== 'string') return null;
-    try {
-      return JSON.parse(data);
-    } catch {
-      return null;
-    }
-  }
-
-  function isGameSocket(socket) {
-    return typeof socket?.url === 'string' && socket.url.includes('/ws');
-  }
-
   function getCatchDelayMs() {
     return (
       Math.floor(Math.random() * (MAX_CATCH_DELAY_MS - MIN_CATCH_DELAY_MS + 1)) +
@@ -662,9 +654,8 @@
   }
 
   function sendDirect(payload) {
-    if (!state.socket || state.socket.readyState !== WebSocket.OPEN) return false;
-    originalSend.call(state.socket, JSON.stringify(payload));
-    return true;
+    if (!state.socket || bridge.getSocket() !== state.socket || !bridge.isOpen()) return false;
+    return bridge.sendJson(payload);
   }
 
   function requestBallSnapshot({ force = false } = {}) {
@@ -788,8 +779,7 @@
     renderPanel();
   }
 
-  function handleMessage(event) {
-    const message = parseFrame(event.data);
+  function handleMessage(message) {
     if (!message?.type) return;
 
     if (message.type === 'autohelper') {
@@ -856,46 +846,48 @@
     }
   }
 
-  function attachSocket(socket) {
-    if (!isGameSocket(socket) || attachedSockets.has(socket)) return false;
-    attachedSockets.add(socket);
-    if (state.socket && state.socket !== socket) {
-      clearSocketCatchState();
-      renderPanel();
-    }
+  function scheduleInitialBallSnapshot(socket) {
+    if (!state.enabled || state.ballsRequestTimer) return;
+    state.ballsRequestTimer = setTimeout(() => {
+      state.ballsRequestTimer = null;
+      if (state.socket === socket && bridge.getSocket() === socket) requestBallSnapshot();
+    }, 0);
+  }
+
+  function adoptSocket(socket) {
+    if (!socket) return;
+    const replaced = Boolean(state.socket && state.socket !== socket);
+    if (replaced) clearSocketCatchState();
     state.socket = socket;
-    socket.addEventListener('message', (event) => {
-      if (state.socket === socket) handleMessage(event);
-    });
-    socket.addEventListener('open', () => {
-      state.socket = socket;
+    if (socket.readyState === WebSocket.OPEN) scheduleInitialBallSnapshot(socket);
+    log(replaced ? 'WebSocket do jogo substituído.' : 'WebSocket do jogo identificado.');
+    renderPanel();
+  }
+
+  unsubscribeBridge = bridge.subscribe({
+    socket(event) {
+      adoptSocket(event.socket);
+    },
+    open(event) {
+      if (bridge.getSocket() !== event.socket) return;
+      state.socket = event.socket;
       requestBallSnapshot();
       log('WebSocket do jogo conectado.');
       renderPanel();
-    });
-    socket.addEventListener('close', () => {
-      if (state.socket === socket) {
+    },
+    close(event) {
+      if (state.socket === event.socket) {
         state.socket = null;
         clearSocketCatchState();
       }
       renderPanel();
-    });
-    log('WebSocket do jogo identificado.');
-    return true;
-  }
+    },
+    incoming(event) {
+      handleMessage(event.message);
+    },
+  });
 
-  const patchedSend = function patchedSend(data) {
-    const attached = isGameSocket(this) ? attachSocket(this) : false;
-    const result = originalSend.apply(this, arguments);
-    if (attached) requestBallSnapshot();
-    return result;
-  };
-  WebSocket.prototype.send = patchedSend;
-
-  if (isGameSocket(window.myGameSocket)) {
-    attachSocket(window.myGameSocket);
-    requestBallSnapshot();
-  }
+  adoptSocket(bridge.getSocket());
 
   window.piwAutoCatch = {
     installed: true,
@@ -979,14 +971,15 @@
     },
     uninstall() {
       this.stop();
+      unsubscribeBridge?.();
+      unsubscribeBridge = null;
       interfaceObserver?.disconnect();
       clearBallsRequestTimer();
-      if (WebSocket.prototype.send === patchedSend) WebSocket.prototype.send = originalSend;
       document.querySelector('#piw-auto-catch-panel')?.remove();
       document.querySelector('#piw-auto-catch-button')?.remove();
       document.querySelector('#piw-auto-catch-styles')?.remove();
       delete window.piwAutoCatch;
-      log('Removido. Recarregue a página para remover listeners de sockets antigos.');
+      log('Removido. Inscrição no WebSocket bridge encerrada.');
     },
   };
 

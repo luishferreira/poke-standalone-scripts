@@ -25,7 +25,7 @@ npm run verify
 
 `npm run build` regenera os três userscripts. `npm run verify` confirma que os artefatos estão sincronizados, valida a sintaxe e executa os testes locais sem acessar o jogo.
 
-O build aceita módulos compartilhados globais ou por userscript em `scripts/userscripts.config.js`. No rollout canário atual, o WebSocket bridge é incorporado somente ao Auto Catch, mas permanece passivo: a feature ainda usa seus hooks anteriores e não registra subscriber no bridge. Auto Boss e Auto Reconnect continuam sem o módulo.
+O build aceita módulos compartilhados globais ou por userscript em `scripts/userscripts.config.js`. Atualmente o WebSocket bridge é incorporado somente ao Auto Catch, que usa um subscriber persistente para lifecycle/mensagens e envia pelo próprio bridge. Auto Boss e Auto Reconnect continuam sem o módulo.
 
 ## Observação
 
