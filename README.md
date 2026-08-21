@@ -14,7 +14,9 @@ Os scripts verificam atualizações usando esses mesmos endereços. Uma atualiza
 
 ## Uso sem Tampermonkey
 
-1. Abra um dos links de instalação acima e copie todo o código.
+Código: [Auto Catch](https://github.com/luishferreira/poke-standalone-scripts/blob/master/auto-catch.user.js) · [Auto Boss](https://github.com/luishferreira/poke-standalone-scripts/blob/master/auto-boss.user.js) · [Auto Reconnect](https://github.com/luishferreira/poke-standalone-scripts/blob/master/auto-reconnect.user.js)
+
+1. Abra o código desejado e copie todo o arquivo.
 2. Abra o jogo e acesse o console do navegador (`F12` → **Console**).
 3. Cole o código e pressione `Enter`.
 
