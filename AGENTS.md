@@ -17,19 +17,22 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 
 ## Inventário atual dos scripts
 
-### `auto-catch.js`
+### `auto-catch.user.js`
 
 - Userscript próprio, namespace `poke-manager`, executado em `document-start`.
 - Captura o socket do jogo ao observar `WebSocket.prototype.send` e anexa um listener de `message` uma única vez por socket com `WeakSet`.
 - A mensagem `pending` mais recente substitui completamente a fila local e é a fonte de verdade dos alvos ainda disponíveis.
 - Envia `{ type: 'catch', pendingId, ballId }`, com apenas uma captura em voo.
 - Respeita jitter obrigatório de 4,2 a 5,0 segundos entre envios; o mínimo não deve ser reduzido.
-- Libera/remove o alvo após `catch-result`, `catch-cooldown`, erro de Pokémon indisponível ou timeout. Pokémon pendentes duram pouco; um alvo que entrou em cooldown/timeout não deve ser tentado indefinidamente.
+- Cada `pendingId` pode ser enviado no máximo uma vez por conexão. O alvo é removido localmente assim que o envio é aceito; resultado, cooldown, indisponibilidade ou timeout apenas liberam a captura em voo, nunca autorizam retry do mesmo ID.
+- Distingue shiny pelo booleano observado `pending.list[].shiny`. A bola normal e a bola shiny são configuradas separadamente por aba; os defaults são Ultra Ball 4 e Idle Ball 6, respectivamente.
+- `balls` é a fonte de verdade do estoque. O script solicita `balls-get` ao conectar/ativar e não captura com estoque desconhecido ou zerado; não faz fallback automático para outra bola.
+- `autohelper` com catch normal ou shiny ativo e `catch-result` com `auto: true` indicam autocatch VIP. Nessa situação a captura manual é bloqueada e a interface alerta o usuário; um resultado automático nunca libera nem contabiliza o `inFlight` manual.
 - Pokébolas conhecidas: Poke Ball 1, Great Ball 2, Super Ball 3, Ultra Ball 4 e Idle Ball 6.
 - Configuração fica em `piw-auto-catch-settings-v1`; API de diagnóstico/controle fica em `window.piwAutoCatch`.
 - O script somente recebe o tráfego normal do socket até o usuário ativar/usar o autocatch. Não adicione requests auxiliares desnecessários.
 
-### `auto-reconnect.js`
+### `auto-reconnect.user.js`
 
 - Userscript próprio que acompanha a hunt atual pelo `enter-hunt` enviado pelo jogo.
 - Considera atividade os tipos `field`, `field-init`, `field-kill`, `poke-xp`, `pending` e `catch-result`.
@@ -38,13 +41,14 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 - Também sai e volta quando um `field` contém Mega Sableye.
 - Configuração do slug fica em `piw_hunt_watchdog_v1`; API pública fica em `window.piwHuntWatchdog`.
 
-### `auto-boss.js`
+### `auto-boss.user.js`
 
 - Userscript de boss executado em `document-idle`.
 - Usa o global legado `window.myGameSocket` e adiciona um painel no `nav.game-dock`.
 - Entra no slug configurado, acompanha HP, vitórias, derrotas e até dez registros de loot.
-- Quando `field.fainted` é verdadeiro, sai, envia `joy-heal` e reentra.
-- Quando `field.bossOutcome` chega, registra o resultado, sai e reentra ou conclui a parada agendada.
+- `field.bossOutcome` é a única confirmação de término: `won` é vitória e qualquer outro valor truthy é derrota. `fainted` de Pokémon individuais não encerra a luta e não controla o lifecycle.
+- Após qualquer `bossOutcome`, sai, envia `joy-heal` fora da luta e então reentra ou conclui a parada agendada.
+- A parada forçada interrompe somente a automação e nunca envia `leave-hunt`; se a limpeza pós-resultado já começou, ela termina a cura mas bloqueia a reentrada.
 - O watchdog de 45 segundos atualmente apenas pausa e alerta; não o transforme silenciosamente em recuperação automática.
 - Configuração fica em `piw_boss_farm_v1`. O estado `running`/`stopping` é deliberadamente restaurado como falso após reload.
 
@@ -65,7 +69,7 @@ Os três scripts próprios podem rodar na mesma página e o usuário também ins
 
 ### Deve existir um único responsável por cada automação
 
-- `auto-reconnect.js` e o auto-reconnect do `piw-qol.js` não devem ficar ativos ao mesmo tempo. Ambos usam limiares equivalentes e podem enviar sequências duplicadas de `leave-hunt`/`enter-hunt`.
+- `auto-reconnect.user.js` e o auto-reconnect do `piw-qol.js` não devem ficar ativos ao mesmo tempo. Ambos usam limiares equivalentes e podem enviar sequências duplicadas de `leave-hunt`/`enter-hunt`.
 - Antes de criar uma feature nova, pesquise se o PIW-QOL ou outro script já faz a mesma coisa. Como o PIW-QOL é intocável, resolva sobreposição somente no script próprio: deixe uma implementação desativável, detecte conflito com segurança quando possível ou explique qual opção o usuário deve desligar.
 - `auto-boss` controla entrada/saída de hunt por conta própria. Um watchdog externo não deve interpretar suas transições planejadas como travamento.
 - Autocatch manual e autocatch VIP server-side são modos distintos. Não ative o manual automaticamente quando o jogo já estiver capturando server-side; o usuário deve escolher conscientemente.
@@ -80,7 +84,7 @@ Os três scripts próprios podem rodar na mesma página e o usuário também ins
 - Um `close` não significa necessariamente logout. O próprio jogo pode reconectar; diferencie socket fechado temporariamente, silêncio da hunt e reload completo.
 - Chamadas internas que precisam contornar observação de saída devem usar deliberadamente a função nativa capturada. Chamadas que devem atualizar o estado compartilhado devem passar pelo bridge normal. Documente a escolha.
 
-Se o projeto for modularizado, a direção recomendada é um único `ws-bridge` instalado em `document-start`, responsável por:
+`src/shared/ws-bridge.js` implementa isoladamente a API v1 em `window.piwScripts.wsBridge`, responsável por:
 
 - detectar sockets do jogo;
 - publicar mensagens recebidas e enviadas para subscribers;
@@ -89,11 +93,11 @@ Se o projeto for modularizado, a direção recomendada é um único `ws-bridge` 
 - deduplicar listeners;
 - permitir cleanup por feature.
 
-Features não devem continuar criando patches próprios depois que esse bridge existir.
+O bridge é passivo: instalar não abre conexão nem envia mensagens. Ele encadeia o construtor e o `send` encontrados, aceita wrapper externo antes ou depois, isola erros de subscribers e ignora mensagens do socket substituído. No rollout canário atual, ele é incorporado somente ao `auto-catch.user.js`, mas a feature ainda mantém seus hooks antigos e não registra subscriber no bridge. Auto Boss e Auto Reconnect ainda não recebem o módulo. Quando a migração começar, features não devem manter patches próprios depois de passarem a usar o bridge.
 
 ## Estado e persistência no navegador
 
-- `localStorage` é compartilhado por todas as abas da mesma origem e pode misturar contas diferentes. Não trate um slug, contador ou preferência global como estado confiável da aba atual.
+- Os scripts próprios usam `sessionStorage` para manter preferências e histórico isolados por aba. Não volte a usar `localStorage` para slug, bola, contadores ou qualquer estado associado à conta aberta, pois ele é compartilhado por todas as abas da mesma origem.
 - Estado transitório — socket, timer, promise, `inFlight`, `transitioning`, `running` — deve ficar em memória e começar em modo seguro após reload.
 - Só persista preferências e histórico que realmente precisem sobreviver. Use chaves únicas, versionadas e prefixadas (`piw-...-vN`).
 - Mudança do formato salvo exige migração tolerante. Leitura inválida deve voltar ao default, nunca impedir o userscript de iniciar.
@@ -148,42 +152,40 @@ Só use estes contratos conforme já observados; ainda valide mudanças futuras 
 
 Eventos frequentes como `pending`, `field`, `field-kill` e `poke-xp` servem para estado local. Não responda a todos com uma nova request.
 
-## Estrutura recomendada ao transformar em projeto
+## Build e estrutura do projeto
 
-Os quatro `.js` da raiz são hoje artefatos instaláveis. Não os quebre antes de existir build e validação do output. Uma estrutura futura simples pode ser:
+Os arquivos canônicos ficam em `src`; os três `.user.js` da raiz são artefatos gerados e instaláveis:
 
 ```text
 src/
-  core/
-    ws-bridge.js
-    storage.js
-    dom.js
-    timers.js
-  features/
-    auto-catch/
-    auto-reconnect/
-    auto-boss/
-userscripts/ ou dist/
-  auto-catch.user.js
-  auto-reconnect.user.js
-  auto-boss.user.js
+  shared/                 # reservado para módulos incorporados no build
+  auto-catch.js
+  auto-reconnect.js
+  auto-boss.js
+scripts/
+  userscripts.config.js
+  build-userscripts.js
+auto-catch.user.js        # gerado
+auto-reconnect.user.js    # gerado
+auto-boss.user.js         # gerado
 test/
-  fixtures/
-  unit/
 ```
 
-Regras para essa evolução:
+Regras do build:
 
-- `src` pode ser modular, mas o arquivo entregue ao Tampermonkey deve continuar sendo um único userscript autocontido, salvo decisão explícita de usar `@require`.
+- Edite somente a fonte correspondente em `src` e incremente ali o `@version`; nunca corrija diretamente um `.user.js` gerado.
+- Execute `npm run build` para regenerar os três artefatos. O output é determinístico e não contém timestamp.
+- `npm run build:check` não escreve arquivos e falha quando um artefato está ausente ou difere da fonte.
+- Módulos da lista global `shared` são incorporados antes de todas as features; cada entrada também pode declarar sua própria lista para rollout gradual. O bridge permanece restrito à entrada do Auto Catch até o canário ser validado no navegador.
+- O arquivo entregue ao Tampermonkey deve continuar sendo um único userscript autocontido; não introduza `@require` nem outro userscript obrigatório.
 - O bloco `// ==UserScript==` deve ser o primeiro conteúdo do artefato e preservar `@name`, `@namespace`, `@match`, `@grant` e `@run-at` corretos.
-- Outputs gerados não são editados à mão depois que o build existir. Mudanças entram em `src`, testes rodam e então o bundle é regenerado.
-- Não introduza framework/bundler pesado sem necessidade. Escolha a menor ferramenta que preserve IIFE, metadata e compatibilidade com o navegador alvo.
-- Mantenha `piw-qol.js` fora de `src`, `dist`, build, lint com autofix e qualquer comando de formatação. Se permanecer dentro da pasta do projeto para consulta, considere uma área `reference/` explicitamente excluída do pipeline.
+- Não introduza framework/bundler pesado sem necessidade. O build atual usa somente módulos nativos do Node.js.
+- Mantenha `piw-qol.js` fora de `src`, build, lint com autofix e qualquer comando de formatação.
 - Features compartilhadas devem depender de interfaces pequenas (`socketBridge`, `storage`, `domHost`, `clock`) para permitir testes sem a página real.
 
 ## Convenções de código
 
-- Siga o estilo do arquivo próprio ao fazer correção localizada. `auto-catch.js` usa 2 espaços; `auto-boss.js` e `auto-reconnect.js` têm trechos em 4 espaços. Não faça correções localizadas no PIW-QOL.
+- Siga o estilo da fonte própria ao fazer correção localizada. `src/auto-catch.js` usa 2 espaços; `src/auto-boss.js` e `src/auto-reconnect.js` têm trechos em 4 espaços. Não faça correções localizadas no PIW-QOL.
 - Para módulos novos do projeto: 2 espaços, aspas simples, ponto e vírgula, `camelCase` para funções/variáveis, `PascalCase` para classes e `UPPER_SNAKE_CASE` para constantes.
 - Use IIFE e `'use strict'` no bundle final.
 - Prefira funções pequenas e puras para parse, seleção de alvo, cálculo de delay e decisão de recovery. Isole DOM e I/O nas bordas.
@@ -195,14 +197,22 @@ Regras para essa evolução:
 
 ## Testes e validação
 
-O projeto atual não possui `package.json` nem suíte automatizada. Os três scripts próprios passam por `node --check`, que valida somente sintaxe. O PIW-QOL não faz parte da matriz de validação do projeto.
+O projeto possui build sem dependências e testes com o runner nativo do Node.js. O PIW-QOL não faz parte da matriz de build ou validação.
 
-Até existir uma suíte, a validação mínima após qualquer mudança é:
+A validação completa após qualquer mudança é:
 
 ```bash
-node --check auto-catch.js
-node --check auto-reconnect.js
-node --check auto-boss.js
+npm run build
+npm run verify
+```
+
+Os comandos direcionados continuam disponíveis:
+
+```bash
+node scripts/build-userscripts.js --check
+node --check auto-catch.user.js
+node --test test/auto-catch.test.js
+node --test test/auto-boss.test.js
 ```
 
 Ao adicionar testes:
@@ -250,7 +260,7 @@ Nunca teste compra, venda, transferência, liberação, catch, troca de hunt ou 
 - A feature desativada permanece passiva?
 - Timers, observers e listeners são únicos e têm cleanup?
 - Histórico/Map/Set têm limite de crescimento?
-- `localStorage` compartilhado entre abas não está sendo confundido com estado da conta atual?
+- Todo estado associado à conta aberta continua isolado por aba em `sessionStorage`?
 - Dados do jogo são escapados antes de entrar em `innerHTML`?
 - Nenhum token/cookie/proxy foi incluído ou logado?
 - Metadata e versão do userscript estão corretos?

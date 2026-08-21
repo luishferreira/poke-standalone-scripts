@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         PIW Auto Catch
 // @namespace    poke-manager
-// @version      1.1.0
+// @version      1.4.3
 // @description  Captura automaticamente os Pokémon pendentes usando o WebSocket do jogo.
 // @author       Keita
 // @match        https://poke.idleworld.online/play*
+// @updateURL    https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/auto-catch.user.js
+// @downloadURL  https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/auto-catch.user.js
 // @run-at       document-start
 // @grant        none
 // ==/UserScript==
@@ -20,7 +22,10 @@
   const MIN_CATCH_DELAY_MS = 4_200;
   const MAX_CATCH_DELAY_MS = 5_000;
   const CATCH_RESPONSE_TIMEOUT_MS = 5_000;
-  const DEFAULT_BALL_ID = 4;
+  const BALL_REFRESH_COOLDOWN_MS = 2_000;
+  const MAX_ATTEMPTED_PENDING_IDS = 2_000;
+  const DEFAULT_NORMAL_BALL_ID = 4;
+  const DEFAULT_SHINY_BALL_ID = 6;
   const BALL_OPTIONS = [
     { id: 1, name: 'Poke Ball' },
     { id: 2, name: 'Great Ball' },
@@ -31,17 +36,26 @@
   const AVAILABLE_BALL_IDS = BALL_OPTIONS.map((ball) => ball.id);
   const SETTINGS_KEY = 'piw-auto-catch-settings-v1';
 
+  function normalizeBallId(ballId, fallback) {
+    const normalized = Number(ballId);
+    return AVAILABLE_BALL_IDS.includes(normalized) ? normalized : fallback;
+  }
+
   function loadSettings() {
     try {
-      const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+      const saved = JSON.parse(sessionStorage.getItem(SETTINGS_KEY) || '{}');
+      const legacyBallId = normalizeBallId(saved.ballId, DEFAULT_NORMAL_BALL_ID);
       return {
         enabled: saved.enabled !== false,
-        ballId: AVAILABLE_BALL_IDS.includes(Number(saved.ballId))
-          ? Number(saved.ballId)
-          : DEFAULT_BALL_ID,
+        normalBallId: normalizeBallId(saved.normalBallId, legacyBallId),
+        shinyBallId: normalizeBallId(saved.shinyBallId, DEFAULT_SHINY_BALL_ID),
       };
     } catch {
-      return { enabled: true, ballId: DEFAULT_BALL_ID };
+      return {
+        enabled: true,
+        normalBallId: DEFAULT_NORMAL_BALL_ID,
+        shinyBallId: DEFAULT_SHINY_BALL_ID,
+      };
     }
   }
 
@@ -50,17 +64,25 @@
   const originalSend = WebSocket.prototype.send;
   const attachedSockets = new WeakSet();
   const state = {
-    enabled: true,
     enabled: savedSettings.enabled,
     socket: null,
-    ballId: DEFAULT_BALL_ID,
-    ballId: savedSettings.ballId,
+    normalBallId: savedSettings.normalBallId,
+    shinyBallId: savedSettings.shinyBallId,
+    ballCounts: null,
     latestPending: new Map(),
+    attemptedPendingIds: new Set(),
+    attemptedPendingOrder: [],
     inFlight: null,
     responseTimer: null,
     workerTimer: null,
+    ballsRequestTimer: null,
     workerRunning: false,
     nextCatchTime: 0,
+    lastBallsRequestAt: 0,
+    stockWarning: null,
+    vipAutoCatchDetected: false,
+    vipAutoCatchNormal: false,
+    vipAutoCatchShiny: false,
     sent: 0,
     successes: 0,
     failures: 0,
@@ -69,9 +91,13 @@
 
   function saveSettings() {
     try {
-      localStorage.setItem(
+      sessionStorage.setItem(
         SETTINGS_KEY,
-        JSON.stringify({ enabled: state.enabled, ballId: state.ballId }),
+        JSON.stringify({
+          enabled: state.enabled,
+          normalBallId: state.normalBallId,
+          shinyBallId: state.shinyBallId,
+        }),
       );
     } catch {
       // O autocatch continua funcionando mesmo se o navegador bloquear o storage.
@@ -83,26 +109,67 @@
     console.log(`[PIW Auto Catch] ${message}${suffix}`);
   }
 
+  function getBallName(ballId) {
+    return BALL_OPTIONS.find((ball) => ball.id === ballId)?.name || `Ball ${ballId}`;
+  }
+
+  function getBallQuantity(ballId) {
+    if (!state.ballCounts) return null;
+    return Math.max(0, Number(state.ballCounts[ballId]) || 0);
+  }
+
+  function getBlockingMessage() {
+    if (state.vipAutoCatchDetected) {
+      const modes = [
+        state.vipAutoCatchNormal ? 'normal' : null,
+        state.vipAutoCatchShiny ? 'shiny' : null,
+      ].filter(Boolean).join(' e ');
+      return `Autocatch VIP ${modes ? `(${modes}) ` : ''}detectado. Captura manual bloqueada.`;
+    }
+    if (state.enabled && !state.ballCounts) return 'Aguardando o estoque de Pokébolas.';
+    return state.stockWarning;
+  }
+
+  function formatBallQuantity(ballId) {
+    const quantity = getBallQuantity(ballId);
+    return quantity == null ? '—' : quantity.toLocaleString('pt-BR');
+  }
+
   function renderPanel() {
     const panel = document.querySelector('#piw-auto-catch-panel');
     const button = document.querySelector('#piw-auto-catch-button');
     const socketOpen = state.socket?.readyState === WebSocket.OPEN;
+    const blockingMessage = getBlockingMessage();
+    const blocked = state.enabled && Boolean(blockingMessage);
 
     if (button) {
       button.classList.toggle('pac-off', !state.enabled);
-      button.classList.toggle('pac-waiting', state.enabled && !socketOpen);
-      button.title = `Auto Catch: ${state.enabled ? 'ativo' : 'pausado'} · Ball ${state.ballId}`;
+      button.classList.toggle('pac-waiting', state.enabled && (!socketOpen || blocked));
+      button.title =
+        `Auto Catch: ${state.enabled ? 'ativo' : 'pausado'}` +
+        ` · Normal: ${getBallName(state.normalBallId)}` +
+        ` · Shiny: ${getBallName(state.shinyBallId)}` +
+        (blockingMessage ? ` · ${blockingMessage}` : '');
     }
     if (!panel) return;
 
-    panel.querySelector('[data-pac="status"]').textContent = state.enabled ? 'Ativo' : 'Pausado';
+    panel.querySelector('[data-pac="status"]').textContent = !state.enabled
+      ? 'Pausado'
+      : blocked ? 'Bloqueado' : 'Ativo';
     panel.querySelector('[data-pac="status"]').classList.toggle('pac-paused', !state.enabled);
+    panel.querySelector('[data-pac="status"]').classList.toggle('pac-blocked', blocked);
     panel.querySelector('[data-pac="socket"]').textContent = socketOpen ? 'Conectado' : 'Aguardando';
     panel.querySelector('[data-pac="pending"]').textContent = String(state.latestPending.size);
     panel.querySelector('[data-pac="successes"]').textContent = String(state.successes);
     panel.querySelector('[data-pac="failures"]').textContent = String(state.failures);
+    panel.querySelector('[data-pac="normal-stock"]').textContent = formatBallQuantity(state.normalBallId);
+    panel.querySelector('[data-pac="shiny-stock"]').textContent = formatBallQuantity(state.shinyBallId);
+    const warning = panel.querySelector('.pac-warning');
+    warning.hidden = !blockingMessage;
+    warning.textContent = blockingMessage || '';
     panel.querySelector('.pac-toggle').textContent = state.enabled ? 'Desativar' : 'Ativar';
-    panel.querySelector('.pac-ball').value = String(state.ballId);
+    panel.querySelector('.pac-normal-ball').value = String(state.normalBallId);
+    panel.querySelector('.pac-shiny-ball').value = String(state.shinyBallId);
   }
 
   function installPanelStyles() {
@@ -124,6 +191,9 @@
       #piw-auto-catch-panel .pac-body { padding:11px; }
       #piw-auto-catch-panel .pac-state { margin-bottom:9px;padding:7px 9px;border-radius:6px;background:#123a2b;color:#9ae6b4;text-align:center;font-weight:800; }
       #piw-auto-catch-panel .pac-state.pac-paused { background:#252e38;color:#a0aec0; }
+      #piw-auto-catch-panel .pac-state.pac-blocked { background:#4a2f12;color:#fbd38d; }
+      #piw-auto-catch-panel .pac-warning { margin:0 0 9px;padding:7px 9px;border:1px solid #8b5b20;border-radius:6px;background:#3b2811;color:#fbd38d;font-size:11px;font-weight:700; }
+      #piw-auto-catch-panel .pac-warning[hidden] { display:none !important; }
       #piw-auto-catch-panel label { display:block;margin:9px 0 5px;color:#a9bfd0;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em; }
       #piw-auto-catch-panel .pac-ball { width:100%;box-sizing:border-box; }
       #piw-auto-catch-panel .pac-grid { display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:9px; }
@@ -144,8 +214,13 @@
       <header><span>🎯 Auto Catch</span><button class="pac-close" type="button">×</button></header>
       <div class="pac-body">
         <div class="pac-state" data-pac="status">Ativo</div>
-        <label for="piw-auto-catch-ball">Pokébola</label>
-        <select id="piw-auto-catch-ball" class="pac-ball">
+        <div class="pac-warning" hidden></div>
+        <label for="piw-auto-catch-normal-ball">Pokémon normal</label>
+        <select id="piw-auto-catch-normal-ball" class="pac-ball pac-normal-ball">
+          ${BALL_OPTIONS.map((ball) => `<option value="${ball.id}">${ball.name}</option>`).join('')}
+        </select>
+        <label for="piw-auto-catch-shiny-ball">Pokémon shiny</label>
+        <select id="piw-auto-catch-shiny-ball" class="pac-ball pac-shiny-ball">
           ${BALL_OPTIONS.map((ball) => `<option value="${ball.id}">${ball.name}</option>`).join('')}
         </select>
         <div class="pac-grid">
@@ -153,6 +228,8 @@
           <div class="pac-card"><small>Na fila</small><b data-pac="pending">0</b></div>
           <div class="pac-card"><small>Capturados</small><b data-pac="successes">0</b></div>
           <div class="pac-card"><small>Falhas</small><b data-pac="failures">0</b></div>
+          <div class="pac-card"><small>Estoque normal</small><b data-pac="normal-stock">—</b></div>
+          <div class="pac-card"><small>Estoque shiny</small><b data-pac="shiny-stock">—</b></div>
         </div>
         <button class="pac-toggle" type="button">Desativar</button>
       </div>`;
@@ -162,8 +239,11 @@
       if (state.enabled) window.piwAutoCatch.stop();
       else window.piwAutoCatch.start();
     });
-    panel.querySelector('.pac-ball').addEventListener('change', (event) => {
-      window.piwAutoCatch.setBall(event.target.value);
+    panel.querySelector('.pac-normal-ball').addEventListener('change', (event) => {
+      window.piwAutoCatch.setNormalBall(event.target.value);
+    });
+    panel.querySelector('.pac-shiny-ball').addEventListener('change', (event) => {
+      window.piwAutoCatch.setShinyBall(event.target.value);
     });
     renderPanel();
   }
@@ -232,8 +312,74 @@
     state.workerTimer = null;
   }
 
-  function getNextTarget() {
-    return state.latestPending.values().next().value || null;
+  function clearBallsRequestTimer() {
+    if (state.ballsRequestTimer) clearTimeout(state.ballsRequestTimer);
+    state.ballsRequestTimer = null;
+  }
+
+  function getBallIdForTarget(target) {
+    return target?.shiny === true ? state.shinyBallId : state.normalBallId;
+  }
+
+  function setStockWarning(message) {
+    if (state.stockWarning === message) return;
+    state.stockWarning = message;
+    renderPanel();
+  }
+
+  function markPendingAttempted(pendingId) {
+    const id = String(pendingId);
+    if (state.attemptedPendingIds.has(id)) return;
+    state.attemptedPendingIds.add(id);
+    state.attemptedPendingOrder.push(id);
+    while (state.attemptedPendingOrder.length > MAX_ATTEMPTED_PENDING_IDS) {
+      const oldestId = state.attemptedPendingOrder.shift();
+      state.attemptedPendingIds.delete(oldestId);
+    }
+  }
+
+  function clearSocketCatchState() {
+    state.latestPending.clear();
+    state.attemptedPendingIds.clear();
+    state.attemptedPendingOrder = [];
+    state.ballCounts = null;
+    state.stockWarning = null;
+    state.vipAutoCatchDetected = false;
+    state.vipAutoCatchNormal = false;
+    state.vipAutoCatchShiny = false;
+    state.nextCatchTime = 0;
+    state.lastBallsRequestAt = 0;
+    clearWorkerTimer();
+    clearBallsRequestTimer();
+    clearResponseTimer();
+    state.inFlight = null;
+  }
+
+  function getNextCatchCandidate() {
+    if (!state.ballCounts) {
+      setStockWarning(null);
+      requestBallSnapshot();
+      return null;
+    }
+
+    const unavailableBalls = new Map();
+    for (const target of state.latestPending.values()) {
+      const pendingId = String(target.id);
+      if (state.attemptedPendingIds.has(pendingId)) continue;
+      const ballId = getBallIdForTarget(target);
+      if (getBallQuantity(ballId) > 0) {
+        setStockWarning(null);
+        return { target, ballId };
+      }
+      unavailableBalls.set(ballId, getBallName(ballId));
+    }
+
+    if (unavailableBalls.size > 0) {
+      setStockWarning(`Sem estoque: ${[...unavailableBalls.values()].join(', ')}.`);
+    } else {
+      setStockWarning(null);
+    }
+    return null;
   }
 
   function sendDirect(payload) {
@@ -242,8 +388,35 @@
     return true;
   }
 
+  function requestBallSnapshot({ force = false } = {}) {
+    if (!state.enabled || state.vipAutoCatchDetected) return false;
+    if (!state.socket || state.socket.readyState !== WebSocket.OPEN) return false;
+
+    const waitMs = Math.max(0, BALL_REFRESH_COOLDOWN_MS - (Date.now() - state.lastBallsRequestAt));
+    if (!force && waitMs > 0) {
+      if (!state.ballsRequestTimer) {
+        state.ballsRequestTimer = setTimeout(() => {
+          state.ballsRequestTimer = null;
+          requestBallSnapshot({ force: true });
+        }, waitMs);
+      }
+      return false;
+    }
+
+    clearBallsRequestTimer();
+    if (!sendDirect({ type: 'balls-get' })) return false;
+    state.lastBallsRequestAt = Date.now();
+    return true;
+  }
+
   function wakeCatchWorker() {
-    if (!state.enabled || state.workerRunning || state.workerTimer || state.inFlight) return;
+    if (
+      !state.enabled ||
+      state.vipAutoCatchDetected ||
+      state.workerRunning ||
+      state.workerTimer ||
+      state.inFlight
+    ) return;
 
     const waitMs = Math.max(0, state.nextCatchTime - Date.now());
     if (waitMs > 0) {
@@ -257,24 +430,24 @@
     runCatchWorker();
   }
 
-  function releaseInFlight({ pendingId = null, dropTarget = false } = {}) {
+  function releaseInFlight({ pendingId = null } = {}) {
     if (!state.inFlight) return false;
     if (pendingId != null && String(pendingId) !== String(state.inFlight.pendingId)) return false;
 
-    const releasedId = String(state.inFlight.pendingId);
+    const releasedBallId = state.inFlight.ballId;
     clearResponseTimer();
     state.inFlight = null;
-    if (dropTarget) state.latestPending.delete(releasedId);
+    if (getBallQuantity(releasedBallId) === 0) requestBallSnapshot();
     wakeCatchWorker();
     return true;
   }
 
   function runCatchWorker() {
-    if (!state.enabled || state.workerRunning || state.inFlight) return;
+    if (state.vipAutoCatchDetected || !state.enabled || state.workerRunning || state.inFlight) return;
     if (!state.socket || state.socket.readyState !== WebSocket.OPEN) return;
 
-    const target = getNextTarget();
-    if (!target) return;
+    const candidate = getNextCatchCandidate();
+    if (!candidate) return;
 
     const waitMs = Math.max(0, state.nextCatchTime - Date.now());
     if (waitMs > 0) {
@@ -284,14 +457,19 @@
 
     state.workerRunning = true;
     try {
+      const { target, ballId } = candidate;
       const payload = {
         type: 'catch',
         pendingId: target.id,
-        ballId: state.ballId,
+        ballId,
       };
       if (!sendDirect(payload)) return;
 
-      state.inFlight = { pendingId: target.id, ballId: state.ballId };
+      const pendingId = String(target.id);
+      markPendingAttempted(pendingId);
+      state.latestPending.delete(pendingId);
+      state.ballCounts[ballId] = Math.max(0, getBallQuantity(ballId) - 1);
+      state.inFlight = { pendingId: target.id, ballId, shiny: target.shiny === true };
       state.nextCatchTime = Date.now() + getCatchDelayMs();
       state.sent += 1;
       log('Captura enviada.', payload);
@@ -301,7 +479,7 @@
         if (!state.inFlight || String(state.inFlight.pendingId) !== expectedPendingId) return;
         state.failures += 1;
         log('Resposta da captura expirou; alvo removido.', { pendingId: expectedPendingId });
-        releaseInFlight({ pendingId: expectedPendingId, dropTarget: true });
+        releaseInFlight({ pendingId: expectedPendingId });
         renderPanel();
       }, CATCH_RESPONSE_TIMEOUT_MS);
     } finally {
@@ -309,14 +487,58 @@
     }
   }
 
+  function updateVipAutoCatchState({ detected, normal = false, shiny = false }) {
+    const changed =
+      state.vipAutoCatchDetected !== detected ||
+      state.vipAutoCatchNormal !== normal ||
+      state.vipAutoCatchShiny !== shiny;
+
+    state.vipAutoCatchDetected = detected;
+    state.vipAutoCatchNormal = normal;
+    state.vipAutoCatchShiny = shiny;
+
+    if (detected) {
+      clearWorkerTimer();
+      state.stockWarning = null;
+      if (changed) log('Autocatch VIP detectado; captura manual bloqueada.', { normal, shiny });
+    } else if (changed) {
+      log('Autocatch VIP não está ativo; captura manual liberada.');
+      requestBallSnapshot();
+      wakeCatchWorker();
+    }
+    renderPanel();
+  }
+
   function handleMessage(event) {
     const message = parseFrame(event.data);
     if (!message?.type) return;
+
+    if (message.type === 'autohelper') {
+      const normal = message.autoCatch === true;
+      const shiny = message.autoCatchShiny === true;
+      updateVipAutoCatchState({ detected: normal || shiny, normal, shiny });
+      return;
+    }
+
+    if (message.type === 'balls' && message.counts && typeof message.counts === 'object') {
+      const counts = {};
+      for (const [rawBallId, rawQuantity] of Object.entries(message.counts)) {
+        const ballId = Number(rawBallId);
+        const quantity = Math.max(0, Number(rawQuantity) || 0);
+        if (Number.isInteger(ballId) && ballId > 0) counts[ballId] = quantity;
+      }
+      state.ballCounts = counts;
+      state.stockWarning = null;
+      renderPanel();
+      wakeCatchWorker();
+      return;
+    }
 
     if (message.type === 'pending' && Array.isArray(message.list)) {
       state.latestPending = new Map(
         message.list
           .filter((target) => target?.id != null)
+          .filter((target) => !state.attemptedPendingIds.has(String(target.id)))
           .map((target) => [String(target.id), target]),
       );
       renderPanel();
@@ -325,16 +547,21 @@
     }
 
     if (message.type === 'catch-result') {
-      if (message.success) state.successes += 1;
+      if (message.auto === true) {
+        updateVipAutoCatchState({ detected: true });
+        return;
+      }
+      const released = releaseInFlight({ pendingId: message.pendingId });
+      if (!released) return;
+      if (message.success === true) state.successes += 1;
       else state.failures += 1;
-      releaseInFlight({ pendingId: message.pendingId, dropTarget: message.success === true });
       renderPanel();
       return;
     }
 
     if (message.type === 'catch-cooldown') {
+      if (!releaseInFlight()) return;
       state.failures += 1;
-      releaseInFlight({ dropTarget: true });
       renderPanel();
       return;
     }
@@ -344,54 +571,59 @@
       typeof message.message === 'string' &&
       message.message.includes('não está disponível')
     ) {
+      if (!releaseInFlight()) return;
       state.failures += 1;
-      releaseInFlight({ dropTarget: true });
       renderPanel();
     }
   }
 
   function attachSocket(socket) {
-    if (!isGameSocket(socket) || attachedSockets.has(socket)) return;
+    if (!isGameSocket(socket) || attachedSockets.has(socket)) return false;
     attachedSockets.add(socket);
     if (state.socket && state.socket !== socket) {
-      state.latestPending.clear();
-      clearResponseTimer();
-      state.inFlight = null;
+      clearSocketCatchState();
       renderPanel();
     }
     state.socket = socket;
-    socket.addEventListener('message', handleMessage);
+    socket.addEventListener('message', (event) => {
+      if (state.socket === socket) handleMessage(event);
+    });
     socket.addEventListener('open', () => {
       state.socket = socket;
-      wakeCatchWorker();
+      requestBallSnapshot();
       log('WebSocket do jogo conectado.');
       renderPanel();
     });
     socket.addEventListener('close', () => {
       if (state.socket === socket) {
         state.socket = null;
-        state.latestPending.clear();
-        clearResponseTimer();
-        state.inFlight = null;
+        clearSocketCatchState();
       }
       renderPanel();
     });
     log('WebSocket do jogo identificado.');
+    return true;
   }
 
   const patchedSend = function patchedSend(data) {
-    if (isGameSocket(this)) attachSocket(this);
-    return originalSend.apply(this, arguments);
+    const attached = isGameSocket(this) ? attachSocket(this) : false;
+    const result = originalSend.apply(this, arguments);
+    if (attached) requestBallSnapshot();
+    return result;
   };
   WebSocket.prototype.send = patchedSend;
 
-  if (isGameSocket(window.myGameSocket)) attachSocket(window.myGameSocket);
+  if (isGameSocket(window.myGameSocket)) {
+    attachSocket(window.myGameSocket);
+    requestBallSnapshot();
+  }
 
   window.piwAutoCatch = {
     installed: true,
     start() {
       state.enabled = true;
       saveSettings();
+      requestBallSnapshot({ force: true });
       wakeCatchWorker();
       log('Ativado.');
       renderPanel();
@@ -400,6 +632,7 @@
     stop() {
       state.enabled = false;
       clearWorkerTimer();
+      clearBallsRequestTimer();
       clearResponseTimer();
       state.inFlight = null;
       state.latestPending.clear();
@@ -409,13 +642,33 @@
       return this.status();
     },
     setBall(ballId) {
+      return this.setNormalBall(ballId);
+    },
+    setNormalBall(ballId) {
       const normalized = Number(ballId);
-      if (!Number.isInteger(normalized) || normalized <= 0) {
-        throw new Error('ballId precisa ser um número inteiro positivo.');
+      if (!AVAILABLE_BALL_IDS.includes(normalized)) {
+        throw new Error('Pokébola normal inválida.');
       }
-      state.ballId = normalized;
+      state.normalBallId = normalized;
+      state.stockWarning = null;
       saveSettings();
-      log('Pokébola alterada.', { ballId: normalized });
+      log('Pokébola normal alterada.', { ballId: normalized });
+      requestBallSnapshot({ force: true });
+      wakeCatchWorker();
+      renderPanel();
+      return this.status();
+    },
+    setShinyBall(ballId) {
+      const normalized = Number(ballId);
+      if (!AVAILABLE_BALL_IDS.includes(normalized)) {
+        throw new Error('Pokébola shiny inválida.');
+      }
+      state.shinyBallId = normalized;
+      state.stockWarning = null;
+      saveSettings();
+      log('Pokébola shiny alterada.', { ballId: normalized });
+      requestBallSnapshot({ force: true });
+      wakeCatchWorker();
       renderPanel();
       return this.status();
     },
@@ -423,8 +676,21 @@
       return {
         enabled: state.enabled,
         socketOpen: state.socket?.readyState === WebSocket.OPEN,
-        ballId: state.ballId,
+        ballId: state.normalBallId,
+        normalBallId: state.normalBallId,
+        shinyBallId: state.shinyBallId,
+        normalBallStock: getBallQuantity(state.normalBallId),
+        shinyBallStock: getBallQuantity(state.shinyBallId),
+        stockKnown: Boolean(state.ballCounts),
+        blocked:
+          state.enabled &&
+          (state.vipAutoCatchDetected || !state.ballCounts || Boolean(state.stockWarning)),
+        blockingMessage: getBlockingMessage(),
+        vipAutoCatchDetected: state.vipAutoCatchDetected,
+        vipAutoCatchNormal: state.vipAutoCatchNormal,
+        vipAutoCatchShiny: state.vipAutoCatchShiny,
         pending: state.latestPending.size,
+        attempted: state.attemptedPendingIds.size,
         inFlight: state.inFlight ? { ...state.inFlight } : null,
         nextCatchInMs: Math.max(0, state.nextCatchTime - Date.now()),
         sent: state.sent,
@@ -435,6 +701,7 @@
     uninstall() {
       this.stop();
       interfaceObserver?.disconnect();
+      clearBallsRequestTimer();
       if (WebSocket.prototype.send === patchedSend) WebSocket.prototype.send = originalSend;
       document.querySelector('#piw-auto-catch-panel')?.remove();
       document.querySelector('#piw-auto-catch-button')?.remove();
@@ -447,7 +714,8 @@
   installInterface();
 
   log('Instalado. Aguardando o WebSocket e a próxima lista pending.', {
-    ballId: state.ballId,
+    normalBallId: state.normalBallId,
+    shinyBallId: state.shinyBallId,
     delay: `${MIN_CATCH_DELAY_MS}-${MAX_CATCH_DELAY_MS}ms`,
   });
 })();

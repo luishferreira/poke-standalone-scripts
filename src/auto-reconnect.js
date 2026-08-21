@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         Auto reconnect
 // @namespace    http://tampermonkey.net/
-// @version      2026-08-16
+// @version      2026-08-20.2
 // @description  auto reconecta e pula mega sableye
 // @author       Keita
 // @match        https://poke.idleworld.online/play
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=idleworld.online
+// @updateURL    https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/auto-reconnect.user.js
+// @downloadURL  https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/auto-reconnect.user.js
 // @grant        none
 // ==/UserScript==
 
@@ -51,14 +53,14 @@
 
   function readSavedState() {
     try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      return JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '{}');
     } catch {
       return {};
     }
   }
 
   function saveState() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ huntSlug: state.huntSlug }));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ huntSlug: state.huntSlug }));
   }
 
   function log(message, details) {

@@ -1,0 +1,13 @@
+{
+  "name": "poke-standalone-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build": "node scripts/build-userscripts.js",
+    "build:check": "node scripts/build-userscripts.js --check",
+    "check:syntax": "node --check auto-catch.user.js && node --check auto-boss.user.js && node --check auto-reconnect.user.js",
+    "test": "node --test test/auto-catch.test.js test/auto-boss.test.js test/ws-bridge.test.js",
+    "verify": "npm run build:check && npm run check:syntax && npm test"
+  }
+}
