@@ -12,6 +12,14 @@ Com o repositório público, abra o script desejado e confirme a instalação no
 
 Os scripts verificam atualizações usando esses mesmos endereços. Uma atualização só é reconhecida pelo Tampermonkey quando o campo `@version` do userscript aumenta.
 
+## Uso sem Tampermonkey
+
+1. Abra um dos links de instalação acima e copie todo o código.
+2. Abra o jogo e acesse o console do navegador (`F12` → **Console**).
+3. Cole o código e pressione `Enter`.
+
+O processo precisa ser repetido após recarregar a página e não possui atualização automática.
+
 ## Desenvolvimento e build
 
 Os arquivos em `src/` são as fontes canônicas. Os `.user.js` da raiz são gerados e não devem ser editados manualmente.
