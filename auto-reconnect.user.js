@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Auto reconnect
 // @namespace    http://tampermonkey.net/
-// @version      2026-08-20.2
+// @version      2026-08-20.5
 // @description  auto reconecta e pula mega sableye
-// @author       Keita
+// @author       Luis
 // @match        https://poke.idleworld.online/play
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=idleworld.online
 // @updateURL    https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/auto-reconnect.user.js
@@ -14,6 +14,282 @@
 // Arquivo gerado por scripts/build-userscripts.js. Não edite manualmente.
 // Fonte: src/auto-reconnect.js
 
+// Shared module: src/shared/ws-bridge.js
+(function installPiwWebSocketBridge(global) {
+  'use strict';
+
+  const API_VERSION = 1;
+  const NAMESPACE_KEY = 'piwScripts';
+  const BRIDGE_KEY = 'wsBridge';
+  const existingNamespace = global[NAMESPACE_KEY];
+
+  if (existingNamespace != null && typeof existingNamespace !== 'object') {
+    console.warn('[PIW WS Bridge] window.piwScripts já existe e não é um objeto.');
+    return;
+  }
+
+  const namespace = existingNamespace || {};
+  if (!existingNamespace) global[NAMESPACE_KEY] = namespace;
+
+  if (namespace[BRIDGE_KEY]) {
+    if (namespace[BRIDGE_KEY].apiVersion !== API_VERSION) {
+      console.warn('[PIW WS Bridge] Bridge incompatível já instalado.', {
+        expected: API_VERSION,
+        installed: namespace[BRIDGE_KEY].apiVersion,
+      });
+    }
+    return;
+  }
+
+  const PreviousWebSocket = global.WebSocket;
+  const previousSend = PreviousWebSocket?.prototype?.send;
+  if (typeof PreviousWebSocket !== 'function' || typeof previousSend !== 'function') {
+    console.warn('[PIW WS Bridge] WebSocket nativo indisponível.');
+    return;
+  }
+
+  const subscribers = new Map();
+  const socketBindings = new Map();
+  const retiredSockets = new WeakSet();
+  let nextSubscriberId = 1;
+  let currentSocket = null;
+  let installed = true;
+
+  function isGameSocket(socket, url = socket?.url) {
+    return typeof url === 'string' && url.includes('/ws');
+  }
+
+  function parseFrame(data) {
+    if (typeof data !== 'string') return null;
+    try {
+      return JSON.parse(data);
+    } catch {
+      return null;
+    }
+  }
+
+  function notify(event) {
+    for (const subscriber of [...subscribers.values()]) {
+      try {
+        if (typeof subscriber === 'function') {
+          subscriber(event);
+        } else {
+          subscriber[event.type]?.(event);
+        }
+      } catch (error) {
+        console.warn('[PIW WS Bridge] Subscriber falhou.', {
+          eventType: event.type,
+          message: error?.message || String(error),
+        });
+      }
+    }
+  }
+
+  function createEvent(type, details = {}) {
+    return Object.freeze({
+      type,
+      timestamp: Date.now(),
+      ...details,
+    });
+  }
+
+  function detachSocket(socket) {
+    const binding = socketBindings.get(socket);
+    if (!binding) return false;
+    socket.removeEventListener('message', binding.onMessage);
+    socket.removeEventListener('open', binding.onOpen);
+    socket.removeEventListener('close', binding.onClose);
+    socket.removeEventListener('error', binding.onError);
+    socketBindings.delete(socket);
+    return true;
+  }
+
+  function setCurrentSocket(socket) {
+    if (currentSocket === socket) return;
+    const previousSocket = currentSocket;
+    currentSocket = socket;
+
+    if (previousSocket) {
+      retiredSockets.add(previousSocket);
+      notify(createEvent('replaced', { socket, previousSocket }));
+      detachSocket(previousSocket);
+    }
+    notify(createEvent('socket', { socket, previousSocket }));
+  }
+
+  function attachSocket(socket, url = socket?.url) {
+    if (!installed || retiredSockets.has(socket) || !isGameSocket(socket, url)) return false;
+    if (socketBindings.has(socket)) {
+      setCurrentSocket(socket);
+      return true;
+    }
+
+    const onMessage = (originalEvent) => {
+      if (!installed || currentSocket !== socket) return;
+      notify(createEvent('incoming', {
+        socket,
+        data: originalEvent.data,
+        message: parseFrame(originalEvent.data),
+        originalEvent,
+      }));
+    };
+    const onOpen = (originalEvent) => {
+      if (!installed) return;
+      setCurrentSocket(socket);
+      notify(createEvent('open', { socket, originalEvent }));
+    };
+    const onClose = (originalEvent) => {
+      const wasCurrent = currentSocket === socket;
+      if (wasCurrent) currentSocket = null;
+      if (installed) {
+        notify(createEvent('close', { socket, originalEvent, wasCurrent }));
+      }
+      detachSocket(socket);
+    };
+    const onError = (originalEvent) => {
+      if (!installed || currentSocket !== socket) return;
+      notify(createEvent('error', { socket, originalEvent }));
+    };
+
+    socketBindings.set(socket, { onMessage, onOpen, onClose, onError });
+    socket.addEventListener('message', onMessage);
+    socket.addEventListener('open', onOpen);
+    socket.addEventListener('close', onClose);
+    socket.addEventListener('error', onError);
+    setCurrentSocket(socket);
+    return true;
+  }
+
+  function isCurrentSocketOpen() {
+    return currentSocket?.readyState === PreviousWebSocket.OPEN;
+  }
+
+  function sendThroughBridge(data) {
+    if (!isCurrentSocketOpen()) return false;
+    try {
+      currentSocket.send(data);
+      return true;
+    } catch (error) {
+      console.warn('[PIW WS Bridge] Falha ao enviar mensagem.', {
+        message: error?.message || String(error),
+      });
+      return false;
+    }
+  }
+
+  function BridgedWebSocket(url, protocols) {
+    const socket = protocols === undefined
+      ? new PreviousWebSocket(url)
+      : new PreviousWebSocket(url, protocols);
+    attachSocket(socket, url);
+    return socket;
+  }
+
+  BridgedWebSocket.prototype = PreviousWebSocket.prototype;
+  Object.setPrototypeOf(BridgedWebSocket, PreviousWebSocket);
+
+  const patchedSend = function patchedSend(data) {
+    const tracked = attachSocket(this);
+    let result;
+    try {
+      result = previousSend.apply(this, arguments);
+    } catch (error) {
+      if (tracked && installed) {
+        notify(createEvent('send-error', {
+          socket: this,
+          data,
+          message: parseFrame(data),
+          error,
+        }));
+      }
+      throw error;
+    }
+
+    if (tracked && installed) {
+      notify(createEvent('outgoing', {
+        socket: this,
+        data,
+        message: parseFrame(data),
+      }));
+    }
+    return result;
+  };
+
+  PreviousWebSocket.prototype.send = patchedSend;
+  global.WebSocket = BridgedWebSocket;
+
+  const api = Object.freeze({
+    apiVersion: API_VERSION,
+    subscribe(subscriber) {
+      if (!installed) throw new Error('PIW WS Bridge não está instalado.');
+      const validFunction = typeof subscriber === 'function';
+      const validObject = subscriber && typeof subscriber === 'object';
+      if (!validFunction && !validObject) {
+        throw new TypeError('subscriber precisa ser uma função ou objeto de handlers.');
+      }
+
+      const subscriberId = nextSubscriberId++;
+      subscribers.set(subscriberId, subscriber);
+      let active = true;
+      return function unsubscribe() {
+        if (!active) return false;
+        active = false;
+        return subscribers.delete(subscriberId);
+      };
+    },
+    getSocket() {
+      return currentSocket;
+    },
+    isOpen() {
+      return isCurrentSocketOpen();
+    },
+    send(data) {
+      return sendThroughBridge(data);
+    },
+    sendJson(payload) {
+      let data;
+      try {
+        data = JSON.stringify(payload);
+      } catch (error) {
+        console.warn('[PIW WS Bridge] Payload não pôde ser serializado.', {
+          message: error?.message || String(error),
+        });
+        return false;
+      }
+      return sendThroughBridge(data);
+    },
+    attach(socket) {
+      return attachSocket(socket);
+    },
+    status() {
+      return {
+        installed,
+        apiVersion: API_VERSION,
+        socket: currentSocket,
+        socketOpen: isCurrentSocketOpen(),
+        subscribers: subscribers.size,
+        trackedSockets: socketBindings.size,
+      };
+    },
+    uninstall() {
+      if (!installed) return false;
+      installed = false;
+      for (const socket of [...socketBindings.keys()]) detachSocket(socket);
+      subscribers.clear();
+      currentSocket = null;
+      if (global.WebSocket === BridgedWebSocket) global.WebSocket = PreviousWebSocket;
+      if (PreviousWebSocket.prototype.send === patchedSend) {
+        PreviousWebSocket.prototype.send = previousSend;
+      }
+      if (namespace[BRIDGE_KEY] === api) delete namespace[BRIDGE_KEY];
+      return true;
+    },
+  });
+
+  namespace[BRIDGE_KEY] = api;
+  if (isGameSocket(global.myGameSocket)) attachSocket(global.myGameSocket);
+})(window);
+
 (function() {
     'use strict';
 
@@ -22,6 +298,12 @@
 
   if (window.piwHuntWatchdog?.installed) {
     console.warn('[Hunt Watchdog] Já está instalado nesta página.');
+    return;
+  }
+
+  const bridge = window.piwScripts?.wsBridge;
+  if (!bridge || bridge.apiVersion !== 1) {
+    console.warn('[Hunt Watchdog] PIW WS Bridge v1 indisponível. Watchdog não instalado.');
     return;
   }
 
@@ -39,12 +321,11 @@
     'catch-result',
   ]);
 
-  const originalSend = WebSocket.prototype.send;
   const saved = readSavedState();
   const state = {
     installed: true,
     enabled: true,
-    socket: null,
+    socket: bridge.getSocket(),
     huntSlug: saved.huntSlug || null,
     huntActive: false,
     lastHuntMessageAt: 0,
@@ -52,7 +333,9 @@
     transitioning: false,
     recoveries: 0,
     megaSableyeEscapes: 0,
+    skipMegaSableye: saved.skipMegaSableye !== false,
   };
+  let unsubscribeBridge = null;
 
   function readSavedState() {
     try {
@@ -63,7 +346,10 @@
   }
 
   function saveState() {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ huntSlug: state.huntSlug }));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+      huntSlug: state.huntSlug,
+      skipMegaSableye: state.skipMegaSableye,
+    }));
   }
 
   function log(message, details) {
@@ -94,6 +380,10 @@
     panel.querySelector('[data-phw="silence"]').textContent = formatSilentTime(silentForMs);
     panel.querySelector('[data-phw="recoveries"]').textContent = String(state.recoveries);
     panel.querySelector('[data-phw="sableye"]').textContent = String(state.megaSableyeEscapes);
+    panel.querySelector('.phw-sableye').textContent = state.skipMegaSableye
+      ? 'Pular Mega: ligado'
+      : 'Pular Mega: desligado';
+    panel.querySelector('.phw-sableye').classList.toggle('phw-disabled', !state.skipMegaSableye);
     panel.querySelector('[data-phw="status"]').textContent = state.transitioning
       ? 'Reconectando na hunt...'
       : state.enabled
@@ -130,6 +420,8 @@
       #piw-hunt-watchdog-panel .phw-actions { display:flex;gap:6px;margin-top:9px; }
       #piw-hunt-watchdog-panel .phw-actions button { flex:1; }
       #piw-hunt-watchdog-panel .phw-reconnect { background:#176342;border-color:#299263; }
+      #piw-hunt-watchdog-panel .phw-sableye { width:100%;margin-top:6px; }
+      #piw-hunt-watchdog-panel .phw-sableye.phw-disabled { color:#a0aec0;background:#111c24;border-color:#2d3748; }
     `;
     (document.head || document.documentElement).appendChild(style);
   }
@@ -155,6 +447,7 @@
           <button class="phw-toggle" type="button">Pausar</button>
           <button class="phw-reconnect" type="button">Reconectar</button>
         </div>
+        <button class="phw-sableye" type="button">Pular Mega: ligado</button>
       </div>`;
     document.body.appendChild(panel);
     panel.querySelector('.phw-close').addEventListener('click', () => { panel.hidden = true; });
@@ -164,6 +457,9 @@
       renderPanel();
     });
     panel.querySelector('.phw-reconnect').addEventListener('click', () => window.piwHuntWatchdog.reconnect());
+    panel.querySelector('.phw-sableye').addEventListener('click', () => {
+      window.piwHuntWatchdog.setMegaSableyeSkip(!state.skipMegaSableye);
+    });
   }
 
   function injectDockButton() {
@@ -201,26 +497,13 @@
     return observer;
   }
 
-  function parseFrame(data) {
-    if (typeof data !== 'string') return null;
-    try {
-      return JSON.parse(data);
-    } catch {
-      return null;
-    }
-  }
-
-  function isGameSocket(socket) {
-    return typeof socket?.url === 'string' && socket.url.includes('/ws');
-  }
-
   function sendDirect(payload) {
-    if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
+    state.socket = bridge.getSocket();
+    if (!bridge.isOpen()) {
       log('Não foi possível enviar: WebSocket indisponível.');
       return false;
     }
-    originalSend.call(state.socket, JSON.stringify(payload));
-    return true;
+    return bridge.sendJson(payload);
   }
 
   function mobIsMegaSableye(mob) {
@@ -236,16 +519,6 @@
 
   function fieldHasMegaSableye(message) {
     return message?.type === 'field' && Array.isArray(message.mobs) && message.mobs.some(mobIsMegaSableye);
-  }
-
-  function attachSocket(socket) {
-    if (!isGameSocket(socket) || state.socket === socket) return;
-    state.socket = socket;
-    socket.addEventListener('message', handleMessage);
-    socket.addEventListener('close', () => {
-      if (state.socket === socket) state.socket = null;
-    });
-    log('WebSocket do jogo capturado.');
   }
 
   function observeOutgoing(message) {
@@ -284,9 +557,8 @@
     return entered;
   }
 
-  function handleMessage(event) {
+  function handleMessage(message) {
     if (!state.enabled) return;
-    const message = parseFrame(event.data);
     if (!message?.type) return;
 
     if (HUNT_MESSAGE_TYPES.has(message.type)) {
@@ -296,22 +568,29 @@
       if (state.huntSlug) state.huntActive = true;
     }
 
-    if (fieldHasMegaSableye(message)) {
+    if (state.skipMegaSableye && fieldHasMegaSableye(message)) {
       recoverHunt('mega-sableye');
     }
   }
 
-  const patchedSend = function patchedSend(data) {
-    if (isGameSocket(this)) {
-      attachSocket(this);
-      observeOutgoing(parseFrame(data));
-    }
-    return originalSend.apply(this, arguments);
-  };
-  WebSocket.prototype.send = patchedSend;
-
-  // Compatibilidade com o userscript de boss enviado pelo usuário.
-  if (isGameSocket(window.myGameSocket)) attachSocket(window.myGameSocket);
+  unsubscribeBridge = bridge.subscribe({
+    socket(event) {
+      state.socket = event.socket;
+      log('WebSocket do jogo capturado.');
+    },
+    open(event) {
+      state.socket = event.socket;
+    },
+    close(event) {
+      if (state.socket === event.socket) state.socket = null;
+    },
+    incoming(event) {
+      handleMessage(event.message);
+    },
+    outgoing(event) {
+      observeOutgoing(event.message);
+    },
+  });
 
   const watchdogTimer = setInterval(() => {
     renderPanel();
@@ -334,6 +613,7 @@
         transitioning: state.transitioning,
         recoveries: state.recoveries,
         megaSableyeEscapes: state.megaSableyeEscapes,
+        skipMegaSableye: state.skipMegaSableye,
       };
     },
     setHunt(slug) {
@@ -341,6 +621,13 @@
       state.huntActive = Boolean(state.huntSlug);
       state.lastHuntMessageAt = Date.now();
       saveState();
+      return this.status();
+    },
+    setMegaSableyeSkip(enabled) {
+      state.skipMegaSableye = Boolean(enabled);
+      saveState();
+      renderPanel();
+      log(`Fuga do Mega Sableye ${state.skipMegaSableye ? 'ativada' : 'desativada'}.`);
       return this.status();
     },
     reconnect() {
@@ -360,13 +647,14 @@
     uninstall() {
       clearInterval(watchdogTimer);
       interfaceObserver?.disconnect();
-      if (WebSocket.prototype.send === patchedSend) WebSocket.prototype.send = originalSend;
+      unsubscribeBridge?.();
+      unsubscribeBridge = null;
       state.enabled = false;
       document.querySelector('#piw-hunt-watchdog-panel')?.remove();
       document.querySelector('#piw-hunt-watchdog-button')?.remove();
       document.querySelector('#piw-hunt-watchdog-styles')?.remove();
       delete window.piwHuntWatchdog;
-      log('Removido. Recarregue a página para limpar listeners já anexados.');
+      log('Removido.');
     },
   };
 

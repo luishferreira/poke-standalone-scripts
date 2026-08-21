@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Auto Boss Farmer PIW
-// @version      1.2.3
+// @version      1.2.4
 // @description  Painel para farmar Bosses com HUD, cura entre lutas e parada agendada.
-// @author       Keita
+// @author       Luis
 // @match        https://poke.idleworld.online/play
 // @updateURL    https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/auto-boss.user.js
 // @downloadURL  https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/auto-boss.user.js

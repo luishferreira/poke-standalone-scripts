@@ -17,6 +17,7 @@ module.exports = {
     {
       input: 'src/auto-reconnect.js',
       output: 'auto-reconnect.user.js',
+      shared: ['src/shared/ws-bridge.js'],
     },
   ],
 };

@@ -2,7 +2,7 @@
 
 Esta pasta é reservada para código-fonte incorporado pelo build em mais de um userscript.
 
-Um módulo entra nos artefatos quando seu caminho é adicionado à lista global `shared` ou à lista `shared` de uma entrada em `scripts/userscripts.config.js`. Atualmente `ws-bridge.js` é incorporado e consumido somente pelo Auto Catch; Auto Boss e Auto Reconnect não o recebem.
+Um módulo entra nos artefatos quando seu caminho é adicionado à lista global `shared` ou à lista `shared` de uma entrada em `scripts/userscripts.config.js`. Atualmente `ws-bridge.js` é incorporado e consumido pelo Auto Catch e pelo Auto Reconnect; o Auto Boss não o recebe.
 
 ## WebSocket bridge
 

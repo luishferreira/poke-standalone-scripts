@@ -25,8 +25,18 @@ npm run verify
 
 `npm run build` regenera os três userscripts. `npm run verify` confirma que os artefatos estão sincronizados, valida a sintaxe e executa os testes locais sem acessar o jogo.
 
-O build aceita módulos compartilhados globais ou por userscript em `scripts/userscripts.config.js`. Atualmente o WebSocket bridge é incorporado somente ao Auto Catch, que usa um subscriber persistente para lifecycle/mensagens e envia pelo próprio bridge. Auto Boss e Auto Reconnect continuam sem o módulo.
+O repositório fornece um pre-commit hook versionado. Ative-o uma vez em cada clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Antes de cada commit, ele executa `npm run verify`, exige que fontes e artefatos gerados sejam adicionados juntos e valida o incremento de `@version` dos userscripts alterados. A mesma checagem pode ser executada manualmente com `npm run check:commit`.
+
+O build aceita módulos compartilhados globais ou por userscript em `scripts/userscripts.config.js`. Atualmente o WebSocket bridge é incorporado ao Auto Catch e ao Auto Reconnect. Cada feature mantém um subscriber persistente para lifecycle/mensagens e envia pelo próprio bridge; com ambos instalados, o diagnóstico mostra dois subscribers. O Auto Boss continua sem o módulo.
 
 ## Observação
 
 Não ative o Auto Reconnect standalone ao mesmo tempo que o auto-reconnect do PIW-QOL.
+
+No painel do Auto Reconnect, a fuga automática do Mega Sableye pode ser ligada ou desligada por aba. Ela permanece ligada por padrão para preservar o comportamento anterior.
