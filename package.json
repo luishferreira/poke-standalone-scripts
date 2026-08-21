@@ -7,8 +7,8 @@
     "build": "node scripts/build-userscripts.js",
     "build:check": "node scripts/build-userscripts.js --check",
     "check:commit": "node scripts/pre-commit-check.js",
-    "check:syntax": "node --check auto-catch.user.js && node --check auto-boss.user.js && node --check auto-reconnect.user.js",
-    "test": "node --test test/auto-catch.test.js test/auto-boss.test.js test/auto-reconnect.test.js test/ws-bridge.test.js",
+    "check:syntax": "node --check auto-catch.user.js && node --check auto-boss.user.js && node --check auto-reconnect.user.js && node --check auto-refill.user.js",
+    "test": "node --test test/auto-catch.test.js test/auto-boss.test.js test/auto-reconnect.test.js test/auto-refill.test.js test/ws-bridge.test.js",
     "verify": "npm run build:check && npm run check:syntax && npm test"
   }
 }

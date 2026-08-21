@@ -54,6 +54,18 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 - O watchdog de 45 segundos atualmente apenas pausa e alerta; não o transforme silenciosamente em recuperação automática.
 - Configuração fica em `piw_boss_farm_v1`. O estado `running`/`stopping` é deliberadamente restaurado como falso após reload.
 
+### `auto-refill.user.js`
+
+- Userscript próprio, namespace `poke-manager`, executado em `document-start` e instalado em modo pausado por padrão.
+- Usa um subscriber persistente do bridge e confia somente nas mensagens espontâneas `inventory` e `balls`; não adicione polling de estoque.
+- Possui configurações independentes de produto, threshold e quantidade para potion e ball. Quantidades aceitas vão de 1 a 10.000 e são divididas sequencialmente em requests de no máximo 1.000.
+- Permanece dentro da hunt. Quando ambas as categorias precisam de refill, potion é comprada antes de ball.
+- Antes de cada lote, preserva a reserva de gold configurada. Resposta parcial, falta de gold, erro ou confirmação incompleta interrompem os lotes restantes.
+- Cada categoria é desarmada antes do ciclo. Depois de uma tentativa, só rearma automaticamente quando o estoque observado sobe acima do threshold; o usuário também pode rearmar manualmente.
+- Venda de lixo é opcional e ocorre antes da consulta da loja. A ativação explícita da automação com essa opção marcada autoriza vender toda a quantidade de itens `loot` com `npcPrice` entre 1 e 4.000.
+- Usa `GET /api/game/shop`, `POST /api/game/shop/buy`, `POST /api/game/shop/sell`, `/game/items.json` e o refresh autenticado já observado. Nunca registre tokens nem o inventário completo.
+- Configuração fica em `piw-auto-refill-settings-v1`; API pública fica em `window.piwAutoRefill`.
+
 ### `piw-qol.js` — referência externa somente leitura
 
 - Script grande de terceiros, atualmente PIW-QOL 10.1.0, autor Desjunior/JulianoCLI, com `@updateURL` e `@downloadURL` próprios.
@@ -67,7 +79,7 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 
 ## Conflitos e coexistência
 
-Os três scripts próprios podem rodar na mesma página e o usuário também instala o PIW-QOL original. Trate coexistência com essa referência externa como requisito, não como acaso.
+Os quatro scripts próprios podem rodar na mesma página e o usuário também instala o PIW-QOL original. Trate coexistência com essa referência externa como requisito, não como acaso.
 
 ### Deve existir um único responsável por cada automação
 
@@ -78,7 +90,7 @@ Os três scripts próprios podem rodar na mesma página e o usuário também ins
 
 ### Interceptação do WebSocket deve ser cooperativa
 
-- O PIW-QOL ainda mantém hooks próprios no WebSocket; a ordem de carregamento do Tampermonkey pode mudar o encadeamento. Os três scripts próprios usam exclusivamente o bridge.
+- O PIW-QOL ainda mantém hooks próprios no WebSocket; a ordem de carregamento do Tampermonkey pode mudar o encadeamento. Os quatro scripts próprios usam exclusivamente o bridge.
 - Ao manter os arquivos atuais, capture a implementação anterior, encaminhe com o mesmo `this` e `arguments`, e nunca engula um envio do jogo sem decisão explícita da feature.
 - Não faça `WebSocket.prototype.send = originalSend` no uninstall se outro script instalou um wrapper depois do seu. Só restaure quando o valor atual ainda for exatamente o wrapper daquele módulo.
 - Não use uma variável global genérica nova como `window.myGameSocket`. Use namespace do projeto, por exemplo `window.piwScripts`, e mantenha aliases legados apenas para compatibilidade documentada.
@@ -95,7 +107,7 @@ Os três scripts próprios podem rodar na mesma página e o usuário também ins
 - deduplicar listeners;
 - permitir cleanup por feature.
 
-O bridge por si só é passivo: instalar não abre conexão nem envia mensagens. Ele encadeia o construtor e o `send` encontrados, aceita wrapper externo antes ou depois, isola erros de subscribers e ignora mensagens do socket substituído. Atualmente é incorporado aos três userscripts; todos usam `subscribe` para lifecycle/mensagens e `sendJson` para seus envios, sem hooks próprios. Uma feature nunca deve chamar `bridge.uninstall()`; seu cleanup remove somente o próprio subscriber.
+O bridge por si só é passivo: instalar não abre conexão nem envia mensagens. Ele encadeia o construtor e o `send` encontrados, aceita wrapper externo antes ou depois, isola erros de subscribers e ignora mensagens do socket substituído. Atualmente é incorporado aos quatro userscripts; todos usam `subscribe` para lifecycle/mensagens e `sendJson` para seus envios, sem hooks próprios. Uma feature nunca deve chamar `bridge.uninstall()`; seu cleanup remove somente o próprio subscriber.
 
 ## Estado e persistência no navegador
 
@@ -135,6 +147,7 @@ O bridge por si só é passivo: instalar não abre conexão nem envia mensagens.
 - Operações de venda, compra, lock, depot e mercado são destrutivas. Exija confirmação na UI e nunca as use como “teste” de integração.
 - Requests de inventário/Pokémon devem reutilizar snapshots quando forem apenas exibição, mas buscar um snapshot fresco antes de uma operação destrutiva quando o fluxo permitir.
 - Evite polling de APIs. Prefira mensagens que o jogo já recebe normalmente, refresh manual ou cache com invalidação explícita.
+- Auto Refill autentica chamadas same-origin com `sessionStorage['pokeweb:tokens']`, tenta exatamente um refresh em 401 e valida o gold retornado pela loja e por cada lote antes de continuar.
 
 ## Contratos WebSocket conhecidos
 
@@ -151,12 +164,13 @@ Só use estes contratos conforme já observados; ainda valide mudanças futuras 
 - Catch VIP server-side usa `catch-result` com `auto: true`; no sucesso também chega `poke-delta`.
 - Atividade de hunt inclui `field`, `field-init`, `field-kill`, `poke-xp`, `pending` e `catch-result`.
 - Boss usa dados observados em `field.fainted`, `field.bossOutcome`, `field.bossLoot` e `field.mobs`.
+- Refill usa `inventory.items` para o estoque da potion selecionada e `balls.counts` para o estoque da ball selecionada.
 
 Eventos frequentes como `pending`, `field`, `field-kill` e `poke-xp` servem para estado local. Não responda a todos com uma nova request.
 
 ## Build e estrutura do projeto
 
-Os arquivos canônicos ficam em `src`; os três `.user.js` da raiz são artefatos gerados e instaláveis:
+Os arquivos canônicos ficam em `src`; os quatro `.user.js` da raiz são artefatos gerados e instaláveis:
 
 ```text
 src/
@@ -164,21 +178,23 @@ src/
   auto-catch.js
   auto-reconnect.js
   auto-boss.js
+  auto-refill.js
 scripts/
   userscripts.config.js
   build-userscripts.js
 auto-catch.user.js        # gerado
 auto-reconnect.user.js    # gerado
 auto-boss.user.js         # gerado
+auto-refill.user.js       # gerado
 test/
 ```
 
 Regras do build:
 
 - Edite somente a fonte correspondente em `src` e incremente ali o `@version`; nunca corrija diretamente um `.user.js` gerado.
-- Execute `npm run build` para regenerar os três artefatos. O output é determinístico e não contém timestamp.
+- Execute `npm run build` para regenerar os quatro artefatos. O output é determinístico e não contém timestamp.
 - `npm run build:check` não escreve arquivos e falha quando um artefato está ausente ou difere da fonte.
-- Módulos da lista global `shared` são incorporados antes de todas as features; cada entrada também pode declarar sua própria lista para rollout gradual. O bridge está nas entradas dos três userscripts.
+- Módulos da lista global `shared` são incorporados antes de todas as features; cada entrada também pode declarar sua própria lista para rollout gradual. O bridge está nas entradas dos quatro userscripts.
 - O arquivo entregue ao Tampermonkey deve continuar sendo um único userscript autocontido; não introduza `@require` nem outro userscript obrigatório.
 - O bloco `// ==UserScript==` deve ser o primeiro conteúdo do artefato e preservar `@name`, `@namespace`, `@match`, `@grant` e `@run-at` corretos.
 - Não introduza framework/bundler pesado sem necessidade. O build atual usa somente módulos nativos do Node.js.

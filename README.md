@@ -9,12 +9,13 @@ Com o repositório público, abra o script desejado e confirme a instalação no
 - [Instalar Auto Catch](https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/auto-catch.user.js)
 - [Instalar Auto Boss](https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/auto-boss.user.js)
 - [Instalar Auto Reconnect](https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/auto-reconnect.user.js)
+- [Instalar Auto Refill](https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/auto-refill.user.js)
 
 Os scripts verificam atualizações usando esses mesmos endereços. Uma atualização só é reconhecida pelo Tampermonkey quando o campo `@version` do userscript aumenta.
 
 ## Uso sem Tampermonkey
 
-Código: [Auto Catch](https://github.com/luishferreira/poke-standalone-scripts/blob/master/auto-catch.user.js) · [Auto Boss](https://github.com/luishferreira/poke-standalone-scripts/blob/master/auto-boss.user.js) · [Auto Reconnect](https://github.com/luishferreira/poke-standalone-scripts/blob/master/auto-reconnect.user.js)
+Código: [Auto Catch](https://github.com/luishferreira/poke-standalone-scripts/blob/master/auto-catch.user.js) · [Auto Boss](https://github.com/luishferreira/poke-standalone-scripts/blob/master/auto-boss.user.js) · [Auto Reconnect](https://github.com/luishferreira/poke-standalone-scripts/blob/master/auto-reconnect.user.js) · [Auto Refill](https://github.com/luishferreira/poke-standalone-scripts/blob/master/auto-refill.user.js)
 
 1. Abra o código desejado e copie todo o arquivo.
 2. Abra o jogo e acesse o console do navegador (`F12` → **Console**).
@@ -31,7 +32,7 @@ npm run build
 npm run verify
 ```
 
-`npm run build` regenera os três userscripts. `npm run verify` confirma que os artefatos estão sincronizados, valida a sintaxe e executa os testes locais sem acessar o jogo.
+`npm run build` regenera os userscripts. `npm run verify` confirma que os artefatos estão sincronizados, valida a sintaxe e executa os testes locais sem acessar o jogo.
 
 O repositório fornece um pre-commit hook versionado. Ative-o uma vez em cada clone:
 
@@ -41,7 +42,9 @@ git config core.hooksPath .githooks
 
 Antes de cada commit, ele executa `npm run verify`, exige que fontes e artefatos gerados sejam adicionados juntos e valida o incremento de `@version` dos userscripts alterados. A mesma checagem pode ser executada manualmente com `npm run check:commit`.
 
-O build aceita módulos compartilhados globais ou por userscript em `scripts/userscripts.config.js`. Atualmente o WebSocket bridge é incorporado aos três userscripts. Cada feature mantém um subscriber persistente para lifecycle/mensagens e envia pelo próprio bridge; a contagem de diagnóstico corresponde à quantidade de features instaladas na aba.
+O build aceita módulos compartilhados globais ou por userscript em `scripts/userscripts.config.js`. Atualmente o WebSocket bridge é incorporado aos quatro userscripts. Cada feature mantém um subscriber persistente para lifecycle/mensagens e envia pelo próprio bridge; a contagem de diagnóstico corresponde à quantidade de features instaladas na aba.
+
+O Auto Refill inicia pausado. No painel, escolha potion e ball, configure threshold, quantidade e reserva de gold e então ative. A venda automática de loot comum é opcional e vende itens de NPC dentro da regra indicada na interface.
 
 ## Observação
 
