@@ -6,10 +6,15 @@ Userscripts independentes para uso com Tampermonkey no Poke Idle World e no Poke
 
 Com o repositório público, abra o script desejado e confirme a instalação no Tampermonkey:
 
+### Poke Idle World
+
 - [Instalar Auto Catch](https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/auto-catch.user.js)
 - [Instalar Auto Boss](https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/auto-boss.user.js)
 - [Instalar Auto Reconnect](https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/auto-reconnect.user.js)
 - [Instalar Auto Refill](https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/auto-refill.user.js)
+
+### PokeDream
+
 - [Instalar PokeDream Auto Refill](https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/pokedream-auto-refill.user.js)
 
 Os scripts verificam atualizações usando esses mesmos endereços. Uma atualização só é reconhecida pelo Tampermonkey quando o campo `@version` do userscript aumenta.
