@@ -25,5 +25,9 @@ module.exports = {
       output: 'auto-refill.user.js',
       shared: ['src/shared/ws-bridge.js'],
     },
+    {
+      input: 'src/pokedream-auto-refill.js',
+      output: 'pokedream-auto-refill.user.js',
+    },
   ],
 };

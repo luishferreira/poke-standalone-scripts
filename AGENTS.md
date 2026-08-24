@@ -2,7 +2,7 @@
 
 ## Escopo
 
-Este repositório reúne userscripts Tampermonkey próprios para `https://poke.idleworld.online/play` e mantém o PIW-QOL apenas como referência externa. Os scripts próprios observam e, quando explicitamente ativados, interagem com o WebSocket e as APIs que a própria página do Poke Idle World já utiliza. Também adicionam pequenos painéis sobre uma aplicação web que pode mudar sem aviso.
+Este repositório reúne userscripts Tampermonkey próprios para `https://poke.idleworld.online/play` e `https://pokedream.com.br/`, e mantém o PIW-QOL apenas como referência externa. Os scripts próprios observam e, quando explicitamente ativados, interagem com o WebSocket e as APIs que a página do respectivo jogo já utiliza. Também adicionam pequenos painéis sobre aplicações web que podem mudar sem aviso.
 
 Estas instruções valem para todo o projeto. Se futuramente existir outro `AGENTS.md` em um subdiretório, ele poderá acrescentar regras específicas daquele escopo.
 
@@ -66,6 +66,20 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 - Usa `GET /api/game/shop`, `POST /api/game/shop/buy`, `POST /api/game/shop/sell`, `/game/items.json` e o refresh autenticado já observado. Nunca registre tokens nem o inventário completo.
 - Configuração fica em `piw-auto-refill-settings-v1`; API pública fica em `window.piwAutoRefill`.
 
+### `pokedream-auto-refill.user.js`
+
+- Userscript próprio para PokeDream, executado em `document-end` e instalado pausado por padrão.
+- Localiza dinamicamente o módulo principal já carregado pelo jogo e encontra o store pelo contrato público em runtime (`hud`, `actionLog`, `actionSeq`, `recordAction`, `tradeItem` e `sellAllLoot`). Nunca dependa do hash ou do nome minificado de um export.
+- Estoque e gold vêm de `store.getState().hud`; atualizações usam a subscription do próprio store. O script não intercepta `fetch`, XHR ou WebSocket e não lê token, sessão, `step` ou `seq` diretamente.
+- Produtos padrão: Small Potion com threshold 10 e Poké Ball com threshold 20. Os dropdowns oferecem todas as entries compráveis de `kind: 'potion'` e `kind: 'ball'` descobertas no catálogo da build. A quantidade padrão e o máximo por action são 1.000 unidades de cada produto.
+- A troca de produto só é aceita com o Auto Refill pausado; ela rearma a categoria e passa estoque, label e compra para o novo ID. Isso não altera qual potion ou ball o bot oficial do jogo está configurado para consumir.
+- Quando uma categoria armada cruza o threshold, chama as mesmas funções da UI oficial, nesta ordem: os `toggleBagLock(itemId)` necessários, confirmação dos locks em `hud.bagLocks`, `sellAllLoot()` e `tradeItem('buy', selectedItemId, qty)` para potion e ball. O próprio jogo atribui `step`/`seq`, agrupa e envia a fila. Não exija `shopFn`/`sellAllLootFn`: elas podem estar nulas enquanto esses métodos públicos ainda encaminham actions válidas pelo estado ativo do mundo.
+- Antes de `sellAllLoot`, descobre o catálogo oficial pelo formato dos itens, protege por padrão todas as entries de `kind: 'stone'` e os IDs escolhidos pelo usuário, e chama `toggleBagLock(itemId)` apenas para itens possuídos ainda ausentes de `hud.bagLocks`. Bloqueios oficiais existentes nunca são removidos automaticamente.
+- A venda só pode ser enfileirada depois que todos os novos IDs aparecem em `hud.bagLocks`. Falha, action ausente ou timeout de confirmação cancela a venda e o restante do ciclo sem retry automático.
+- Cada chamada só conta como enfileirada quando a action correspondente aparece no `actionLog` com `seq` novo. Falha ou confirmação parcial interrompe o ciclo e mantém as categorias afetadas desarmadas; não acrescente retry próprio por fora da fila oficial.
+- Se uma atualização mudar o contrato esperado, falhe fechado, pause a automação e mostre incompatibilidade em vez de tentar nomes ou campos por hipótese.
+- Configuração fica em `pokedream-auto-refill-settings-v2`; API pública fica em `window.pokedreamAutoRefill`.
+
 ### `piw-qol.js` — referência externa somente leitura
 
 - Script grande de terceiros, atualmente PIW-QOL 10.1.0, autor Desjunior/JulianoCLI, com `@updateURL` e `@downloadURL` próprios.
@@ -79,7 +93,7 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 
 ## Conflitos e coexistência
 
-Os quatro scripts próprios podem rodar na mesma página e o usuário também instala o PIW-QOL original. Trate coexistência com essa referência externa como requisito, não como acaso.
+Os quatro scripts próprios do Poke Idle World podem rodar na mesma página e o usuário também instala o PIW-QOL original. Trate coexistência com essa referência externa como requisito, não como acaso.
 
 ### Deve existir um único responsável por cada automação
 
@@ -90,7 +104,7 @@ Os quatro scripts próprios podem rodar na mesma página e o usuário também in
 
 ### Interceptação do WebSocket deve ser cooperativa
 
-- O PIW-QOL ainda mantém hooks próprios no WebSocket; a ordem de carregamento do Tampermonkey pode mudar o encadeamento. Os quatro scripts próprios usam exclusivamente o bridge.
+- O PIW-QOL ainda mantém hooks próprios no WebSocket; a ordem de carregamento do Tampermonkey pode mudar o encadeamento. Os quatro scripts próprios do Poke Idle World usam exclusivamente o bridge.
 - Ao manter os arquivos atuais, capture a implementação anterior, encaminhe com o mesmo `this` e `arguments`, e nunca engula um envio do jogo sem decisão explícita da feature.
 - Não faça `WebSocket.prototype.send = originalSend` no uninstall se outro script instalou um wrapper depois do seu. Só restaure quando o valor atual ainda for exatamente o wrapper daquele módulo.
 - Não use uma variável global genérica nova como `window.myGameSocket`. Use namespace do projeto, por exemplo `window.piwScripts`, e mantenha aliases legados apenas para compatibilidade documentada.
@@ -107,7 +121,7 @@ Os quatro scripts próprios podem rodar na mesma página e o usuário também in
 - deduplicar listeners;
 - permitir cleanup por feature.
 
-O bridge por si só é passivo: instalar não abre conexão nem envia mensagens. Ele encadeia o construtor e o `send` encontrados, aceita wrapper externo antes ou depois, isola erros de subscribers e ignora mensagens do socket substituído. Atualmente é incorporado aos quatro userscripts; todos usam `subscribe` para lifecycle/mensagens e `sendJson` para seus envios, sem hooks próprios. Uma feature nunca deve chamar `bridge.uninstall()`; seu cleanup remove somente o próprio subscriber.
+O bridge por si só é passivo: instalar não abre conexão nem envia mensagens. Ele encadeia o construtor e o `send` encontrados, aceita wrapper externo antes ou depois, isola erros de subscribers e ignora mensagens do socket substituído. Atualmente é incorporado aos quatro userscripts do Poke Idle World; todos usam `subscribe` para lifecycle/mensagens e `sendJson` para seus envios, sem hooks próprios. Uma feature nunca deve chamar `bridge.uninstall()`; seu cleanup remove somente o próprio subscriber.
 
 ## Estado e persistência no navegador
 
@@ -170,7 +184,7 @@ Eventos frequentes como `pending`, `field`, `field-kill` e `poke-xp` servem para
 
 ## Build e estrutura do projeto
 
-Os arquivos canônicos ficam em `src`; os quatro `.user.js` da raiz são artefatos gerados e instaláveis:
+Os arquivos canônicos ficam em `src`; os cinco `.user.js` da raiz são artefatos gerados e instaláveis:
 
 ```text
 src/
@@ -179,6 +193,7 @@ src/
   auto-reconnect.js
   auto-boss.js
   auto-refill.js
+  pokedream-auto-refill.js
 scripts/
   userscripts.config.js
   build-userscripts.js
@@ -186,15 +201,16 @@ auto-catch.user.js        # gerado
 auto-reconnect.user.js    # gerado
 auto-boss.user.js         # gerado
 auto-refill.user.js       # gerado
+pokedream-auto-refill.user.js # gerado
 test/
 ```
 
 Regras do build:
 
 - Edite somente a fonte correspondente em `src` e incremente ali o `@version`; nunca corrija diretamente um `.user.js` gerado.
-- Execute `npm run build` para regenerar os quatro artefatos. O output é determinístico e não contém timestamp.
+- Execute `npm run build` para regenerar os cinco artefatos. O output é determinístico e não contém timestamp.
 - `npm run build:check` não escreve arquivos e falha quando um artefato está ausente ou difere da fonte.
-- Módulos da lista global `shared` são incorporados antes de todas as features; cada entrada também pode declarar sua própria lista para rollout gradual. O bridge está nas entradas dos quatro userscripts.
+- Módulos da lista global `shared` são incorporados antes de todas as features; cada entrada também pode declarar sua própria lista para rollout gradual. O bridge está nas entradas dos quatro userscripts do Poke Idle World.
 - O arquivo entregue ao Tampermonkey deve continuar sendo um único userscript autocontido; não introduza `@require` nem outro userscript obrigatório.
 - O bloco `// ==UserScript==` deve ser o primeiro conteúdo do artefato e preservar `@name`, `@namespace`, `@match`, `@grant` e `@run-at` corretos.
 - Não introduza framework/bundler pesado sem necessidade. O build atual usa somente módulos nativos do Node.js.
