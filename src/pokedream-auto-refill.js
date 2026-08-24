@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PokeDream Auto Refill
 // @namespace    poke-manager
-// @version      2.3.1
+// @version      2.5.1
 // @description  Protege itens, vende o loot restante e repõe balls e potions configuráveis pela fila oficial do jogo.
 // @author       Luis
 // @match        https://pokedream.com.br/*
@@ -26,6 +26,130 @@
   const SETTINGS_KEY = 'pokedream-auto-refill-settings-v2';
   const SMALL_POTION_ID = 'small_potion';
   const POKE_BALL_ID = 'poke_ball';
+  const SHINY_PRESET_ITEM_IDS = Object.freeze([
+    'aquatic_long_tail',
+    'big_blue_mohawk',
+    'big_cute_ear',
+    'big_green_piece',
+    'black_bear_claw',
+    'black_cobra_tail',
+    'black_feather',
+    'black_lizard_tail',
+    'black_rocks',
+    'blaze_fur',
+    'blaze_red_tail',
+    'blood_scythe',
+    'blue_bone',
+    'blue_bug_wings',
+    'blue_coconut_leaves',
+    'blue_dewgong_tail',
+    'blue_fire_hoof',
+    'blue_fox_tail',
+    'blue_guillotine',
+    'blue_king_ear',
+    'blue_magma_shell',
+    'blue_mohawk',
+    'blue_moth_wing',
+    'blue_nido_ear_ear',
+    'blue_pieces_of_shell',
+    'blue_punching_machine',
+    'blue_rat_ear',
+    'blue_wings',
+    'brown_ear',
+    'brown_petal',
+    'brown_poison_bulb',
+    'brown_shell',
+    'brown_sunflower',
+    'capoeira_tail',
+    'carbon_claw',
+    'champion_underwear',
+    'cyan_ear',
+    'cyan_frog_topknot',
+    'cyan_leaves',
+    'dark_claw',
+    'dark_ectoplasm',
+    'dark_wing',
+    'disgusting_hand',
+    'electric_rat_tail',
+    'electric_soft_wool',
+    'electric_white_ear',
+    'electric_white_tail',
+    'electric_yellow_collar',
+    'emerald',
+    'enchanted_pendant',
+    'enchanted_spoon',
+    'frozen_tusks',
+    'giant_water_cannon',
+    'giant_white_fur',
+    'godzilla_tail',
+    'golden_dragon_tail',
+    'golden_drill',
+    'golden_steelix_tail',
+    'gray_duck_paw',
+    'gray_kick_machine',
+    'gray_toxic_scale',
+    'green_big_mushroom',
+    'green_flower',
+    'green_nido_ear',
+    'green_queen_ear',
+    'green_sheep_tail',
+    'green_vampire_wing',
+    'handful_of_yellow_stones',
+    'hellhound_horns',
+    'loud_microphone',
+    'magma_red_foot',
+    'malfunctioning_core',
+    'master_belt',
+    'metal_bracelet',
+    'moonlight_ears',
+    'mud_tail',
+    'mysterious_necklace',
+    'orange_elephant_foot',
+    'pink_dainty_wing',
+    'pink_tail',
+    'pink_wing',
+    'poisoned_arachnid_legs',
+    'pristine_punching_glove',
+    'pristine_small_gloves',
+    'psychic_wings',
+    'purple_big_leaf',
+    'purple_big_tail',
+    'purple_dimensional_cube',
+    'purple_fish_tail',
+    'purple_leaf',
+    'purple_moon_topknot',
+    'purple_moustache',
+    'purple_nurses_fur',
+    'purple_petal',
+    'purple_rock_plate',
+    'purple_stone_forehead',
+    'red_bee_sting',
+    'red_cocoon',
+    'red_gyarados_tail',
+    'red_piece_of_cocoon',
+    'red_pointy_beak',
+    'shining_claws',
+    'shiny_bat_wing',
+    'silver_spike_shell',
+    'small_purple_flower',
+    'strong_magnet',
+    'sunlight_ears',
+    'two_colored_crest',
+    'two_colored_tail',
+    'unbreakable_shell',
+    'volcano_fur',
+    'white_ball',
+    'white_dandelion',
+    'white_dragon_fin',
+    'white_fin',
+    'white_wig',
+    'yellow_crest',
+    'yellow_cute_ears',
+    'yellow_dragon_tail',
+    'yellow_plant_tail',
+    'yellow_poison_petal',
+    'yellow_tentacle',
+  ]);
   const MAX_QUANTITY_PER_ACTION = 1_000;
   const LOCK_CONFIRM_TIMEOUT_MS = 5_000;
   const CYCLE_DEBOUNCE_MS = 150;
@@ -42,7 +166,6 @@
     ballThreshold: 20,
     ballQuantity: 1_000,
     sellAllLoot: true,
-    protectStones: true,
     protectedItemIds: [],
   });
   const testDependencies = window.__POKEDREAM_AUTO_REFILL_TEST_DEPS__ || null;
@@ -84,7 +207,6 @@
       ballThreshold: normalizeNonNegativeInteger(input.ballThreshold, DEFAULT_SETTINGS.ballThreshold),
       ballQuantity: normalizeQuantity(input.ballQuantity, DEFAULT_SETTINGS.ballQuantity),
       sellAllLoot: input.sellAllLoot !== false,
-      protectStones: input.protectStones !== false,
       protectedItemIds,
     };
   }
@@ -268,9 +390,6 @@
     const snapshot = parseGameSnapshot(gameState, settings);
     if (!snapshot || !itemCatalog) return null;
     const desired = new Set(currentSettings.protectedItemIds);
-    if (currentSettings.protectStones) {
-      for (const itemId of getCatalogInfo(itemCatalog).stoneItemIds) desired.add(itemId);
-    }
     const owned = [...desired].filter((itemId) => normalizeNonNegativeInteger(snapshot.bag[itemId], 0) > 0);
     const currentLocks = new Set(snapshot.bagLocks);
     return {
@@ -624,6 +743,23 @@
     return true;
   }
 
+  function applyProtectionPreset(itemIds, label) {
+    if (!state.itemCatalog || itemIds.length === 0) return false;
+    const validIds = itemIds.filter((itemId) => state.itemCatalog[itemId]);
+    if (validIds.length === 0) return false;
+    configure({ protectedItemIds: [...settings.protectedItemIds, ...validIds] });
+    setMessage(`${validIds.length} itens do preset ${label} adicionados às proteções futuras.`);
+    return true;
+  }
+
+  function applyStonePreset() {
+    return applyProtectionPreset(getCatalogInfo(state.itemCatalog).stoneItemIds, 'Stones');
+  }
+
+  function applyShinyPreset() {
+    return applyProtectionPreset(SHINY_PRESET_ITEM_IDS, 'Shiny');
+  }
+
   function start({ confirmed = false } = {}) {
     if (confirmed !== true) return false;
     if (state.adapterStatus !== 'ready' || !state.gameStore) {
@@ -708,6 +844,7 @@
       #pdr-auto-refill-panel button { border:1px solid #555e70;border-radius:7px;background:#2a3140;color:#f8fafc;padding:7px 9px;font-weight:700;cursor:pointer; }
       #pdr-protection-panel button { border:1px solid #555e70;border-radius:7px;background:#2a3140;color:#f8fafc;padding:7px 9px;font-weight:700;cursor:pointer; }
       #pdr-auto-refill-panel button:disabled { cursor:not-allowed;opacity:.5; }
+      #pdr-protection-panel button:disabled { cursor:not-allowed;opacity:.5; }
       #pdr-auto-refill-panel .pdr-close { width:28px;height:28px;padding:0;color:#fecaca;background:#51252c;border-color:#85404b;font-size:17px; }
       #pdr-protection-panel .pdr-close { width:28px;height:28px;padding:0;color:#fecaca;background:#51252c;border-color:#85404b;font-size:17px; }
       #pdr-auto-refill-panel .pdr-body { padding:11px; }
@@ -731,6 +868,17 @@
       #pdr-protection-panel .pdr-check { display:flex;align-items:center;gap:7px;margin:6px 0 10px; }
       #pdr-protection-panel .pdr-check input { min-width:auto; }
       #pdr-protection-panel .pdr-note { margin:0 0 8px;color:#aab2c0;font-size:11px; }
+      #pdr-protection-panel .pdr-preset { margin:8px 0;padding:8px;border:1px solid #574e78;border-radius:8px;background:#211d31; }
+      #pdr-protection-panel .pdr-preset-head { display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:6px; }
+      #pdr-protection-panel .pdr-preset-title { min-width:0;color:#e9d5ff;font-weight:800; }
+      #pdr-protection-panel .pdr-preset-title small { display:block;color:#b8a8d1;font-size:10px;font-weight:500; }
+      #pdr-protection-panel .pdr-preset-head button { padding:5px 7px;font-size:11px; }
+      #pdr-protection-panel .pdr-preset-list[hidden] { display:none!important; }
+      #pdr-protection-panel .pdr-preset-list { display:grid;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid #4b4365; }
+      #pdr-protection-panel .pdr-preset-row { display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:6px;padding:4px 5px;border-radius:6px;background:#171522; }
+      #pdr-protection-panel .pdr-preset-row input { min-width:auto; }
+      #pdr-protection-panel .pdr-preset-row span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+      #pdr-protection-panel .pdr-preset-row small { color:#86efac;font-size:9px; }
       #pdr-protection-panel .pdr-protection-search { display:grid;grid-template-columns:1fr auto;gap:6px;margin-top:7px; }
       #pdr-protection-panel .pdr-protection-search input { width:100%;box-sizing:border-box; }
       #pdr-protection-panel .pdr-protected-list { display:flex;flex-wrap:wrap;gap:5px;margin-top:9px; }
@@ -837,11 +985,6 @@
     const protectionFieldset = document.createElement('fieldset');
     const protectionLegend = document.createElement('legend');
     protectionLegend.textContent = 'Proteção da mochila';
-    const protectStonesField = createCheckField({
-      id: 'pdr-protect-stones',
-      label: 'Proteger todas as stones',
-      checked: settings.protectStones,
-    });
     const lockSummary = document.createElement('div');
     lockSummary.className = 'pdr-lock-summary';
     lockSummary.dataset.pdr = 'lock-summary';
@@ -874,6 +1017,38 @@
     const protectionNote = document.createElement('p');
     protectionNote.className = 'pdr-note';
     protectionNote.textContent = 'Locks do jogo são preservados. O × remove apenas escolhas futuras do script.';
+    const createPresetCard = (prefix, title) => {
+      const preset = document.createElement('section');
+      preset.className = 'pdr-preset';
+      const presetHead = document.createElement('div');
+      presetHead.className = 'pdr-preset-head';
+      const presetTitle = document.createElement('div');
+      presetTitle.className = 'pdr-preset-title';
+      presetTitle.textContent = title;
+      const presetSummary = document.createElement('small');
+      presetSummary.dataset.pdr = `${prefix}-preset-summary`;
+      presetTitle.appendChild(presetSummary);
+      const presetApply = document.createElement('button');
+      presetApply.type = 'button';
+      presetApply.dataset.pdr = `${prefix}-preset-apply`;
+      presetApply.textContent = 'Aguardando lista';
+      presetApply.disabled = true;
+      const presetExpand = document.createElement('button');
+      presetExpand.type = 'button';
+      presetExpand.dataset.pdr = `${prefix}-preset-expand`;
+      presetExpand.setAttribute('aria-expanded', 'false');
+      presetExpand.textContent = 'Ver/editar';
+      presetExpand.disabled = true;
+      presetHead.append(presetTitle, presetApply, presetExpand);
+      const presetList = document.createElement('div');
+      presetList.className = 'pdr-preset-list';
+      presetList.dataset.pdr = `${prefix}-preset-list`;
+      presetList.hidden = true;
+      preset.append(presetHead, presetList);
+      return { preset, presetApply, presetExpand, presetList };
+    };
+    const stonePreset = createPresetCard('stone', 'Preset Stones');
+    const shinyPreset = createPresetCard('shiny', 'Preset Shiny');
     const protectionSearch = document.createElement('div');
     protectionSearch.className = 'pdr-protection-search';
     const protectionInput = document.createElement('input');
@@ -891,7 +1066,13 @@
     protectedList.className = 'pdr-protected-list';
     protectedList.dataset.pdr = 'protected-list';
     protectionSearch.append(protectionInput, addProtectionButton, itemOptions);
-    protectionBody.append(protectionNote, protectStonesField, protectionSearch, protectedList);
+    protectionBody.append(
+      protectionNote,
+      stonePreset.preset,
+      shinyPreset.preset,
+      protectionSearch,
+      protectedList,
+    );
     protectionPanel.append(protectionHeader, protectionBody);
     openProtectionButton.addEventListener('click', () => {
       protectionPanel.hidden = !protectionPanel.hidden;
@@ -934,10 +1115,16 @@
     bind('#pdr-ball-threshold', 'change', (event) => configure({ ballThreshold: event.target.value }));
     bind('#pdr-ball-quantity', 'change', (event) => configure({ ballQuantity: event.target.value }));
     bind('#pdr-sell-loot', 'change', (event) => configure({ sellAllLoot: event.target.checked }));
-    protectionPanel.querySelector('#pdr-protect-stones')?.addEventListener(
-      'change',
-      (event) => configure({ protectStones: event.target.checked }),
-    );
+    const bindPreset = ({ presetApply, presetExpand, presetList }, apply) => {
+      presetApply.addEventListener('click', apply);
+      presetExpand.addEventListener('click', () => {
+        presetList.hidden = !presetList.hidden;
+        presetExpand.setAttribute('aria-expanded', String(!presetList.hidden));
+        presetExpand.textContent = presetList.hidden ? 'Ver/editar' : 'Recolher';
+      });
+    };
+    bindPreset(stonePreset, applyStonePreset);
+    bindPreset(shinyPreset, applyShinyPreset);
     const addSelectedProtection = () => {
       const value = protectionInput.value.trim();
       if (!value) return;
@@ -1016,6 +1203,54 @@
     }, INTERFACE_DEBOUNCE_MS);
   }
 
+  function renderPresetControls(protectionPanel, prefix, itemIds, selectedIds, officialIds) {
+    if (!protectionPanel) return;
+    const presetIds = itemIds.filter((itemId) => state.itemCatalog?.[itemId]);
+    const selectedCount = presetIds.filter((itemId) => selectedIds.has(itemId)).length;
+    const officialCount = presetIds.filter((itemId) => officialIds.has(itemId)).length;
+    const summary = presetIds.length === 0
+      ? 'Lista ainda não configurada'
+      : `${selectedCount} de ${presetIds.length} escolhidos · ${officialCount} locks no jogo`;
+    const summaryElement = protectionPanel.querySelector(`[data-pdr="${prefix}-preset-summary"]`);
+    if (summaryElement && summaryElement.textContent !== summary) summaryElement.textContent = summary;
+
+    const applyButton = protectionPanel.querySelector(`[data-pdr="${prefix}-preset-apply"]`);
+    if (applyButton) {
+      applyButton.disabled = presetIds.length === 0 || selectedCount === presetIds.length;
+      applyButton.textContent = presetIds.length === 0
+        ? 'Aguardando lista'
+        : (selectedCount === presetIds.length ? 'Todos adicionados' : 'Adicionar todos');
+    }
+    const expandButton = protectionPanel.querySelector(`[data-pdr="${prefix}-preset-expand"]`);
+    if (expandButton) expandButton.disabled = presetIds.length === 0;
+
+    const list = protectionPanel.querySelector(`[data-pdr="${prefix}-preset-list"]`);
+    if (!list) return;
+    if (presetIds.length === 0) list.hidden = true;
+    const listKey = presetIds.map((itemId) => `${itemId}:${state.itemCatalog?.[itemId]?.name || ''}:` +
+      `${selectedIds.has(itemId)}:${officialIds.has(itemId)}`).join('|');
+    if (list.dataset.listKey === listKey) return;
+    list.replaceChildren(...presetIds.map((itemId) => {
+      const row = document.createElement('label');
+      row.className = 'pdr-preset-row';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = selectedIds.has(itemId);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) addProtectedItem(itemId);
+        else removeProtectedItem(itemId);
+      });
+      const name = document.createElement('span');
+      name.textContent = state.itemCatalog?.[itemId]?.name || itemId;
+      name.title = itemId;
+      const badge = document.createElement('small');
+      badge.textContent = officialIds.has(itemId) ? 'No jogo' : '';
+      row.append(checkbox, name, badge);
+      return row;
+    }));
+    list.dataset.listKey = listKey;
+  }
+
   function renderProtectionControls(panel) {
     const protectionPanel = document.querySelector?.('#pdr-protection-panel');
     const datalist = protectionPanel?.querySelector('#pdr-item-options');
@@ -1037,7 +1272,12 @@
     const list = protectionPanel?.querySelector('[data-pdr="protected-list"]');
     const selectedIds = new Set(settings.protectedItemIds);
     const officialIds = new Set(state.bagLocks);
-    const visibleIds = [...new Set([...officialIds, ...selectedIds])];
+    const stonePresetItemIds = getCatalogInfo(state.itemCatalog).stoneItemIds;
+    renderPresetControls(protectionPanel, 'stone', stonePresetItemIds, selectedIds, officialIds);
+    renderPresetControls(protectionPanel, 'shiny', SHINY_PRESET_ITEM_IDS, selectedIds, officialIds);
+    const groupedPresetIds = new Set([...stonePresetItemIds, ...SHINY_PRESET_ITEM_IDS]);
+    const allVisibleIds = [...new Set([...officialIds, ...selectedIds])];
+    const visibleIds = allVisibleIds.filter((itemId) => !groupedPresetIds.has(itemId));
     const listKey = visibleIds
       .map((itemId) => `${itemId}:${state.itemCatalog?.[itemId]?.name || ''}:` +
         `${officialIds.has(itemId)}:${selectedIds.has(itemId)}`)
@@ -1075,16 +1315,14 @@
     const protection = state.gameStore && state.itemCatalog
       ? getProtectionPlan(state.gameStore.getState(), state.itemCatalog)
       : null;
-    const stoneCount = getCatalogInfo(state.itemCatalog).stoneItemIds.length;
     const summary = protection
       ? `${protection.currentLocks.length} bloqueios oficiais agora · ` +
-        `${protection.missing.length} proteções pendentes na mochila` +
-        (settings.protectStones ? ` · ${stoneCount} stones reconhecidas` : '')
+        `${protection.missing.length} proteções pendentes na mochila`
       : 'Aguardando catálogo e mochila oficiais.';
     const summaryElement = panel.querySelector('[data-pdr="lock-summary"]');
     if (summaryElement && summaryElement.textContent !== summary) summaryElement.textContent = summary;
     const openButton = panel.querySelector('[data-pdr="protection-open"]');
-    const openLabel = `Configurar itens protegidos (${visibleIds.length})`;
+    const openLabel = `Configurar itens protegidos (${allVisibleIds.length})`;
     if (openButton && openButton.textContent !== openLabel) openButton.textContent = openLabel;
   }
 
@@ -1210,6 +1448,8 @@
   }
 
   window.pokedreamAutoRefill = {
+    applyShinyPreset,
+    applyStonePreset,
     installed: true,
     addProtectedItem,
     configure,

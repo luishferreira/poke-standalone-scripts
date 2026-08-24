@@ -36,7 +36,10 @@ Os arquivos em `src/` são as fontes canônicas. Os `.user.js` da raiz são gera
 ```bash
 npm run build
 npm run verify
+npm run extract:pokedream-items
 ```
+
+O último comando baixa a build oficial atual do PokeDream e regenera `data/pokedream-items.json` com todos os campos observados no catálogo, metadados da build e contagens por categoria.
 
 `npm run build` regenera os userscripts. `npm run verify` confirma que os artefatos estão sincronizados, valida a sintaxe e executa os testes locais sem acessar o jogo.
 
@@ -52,7 +55,7 @@ O build aceita módulos compartilhados globais ou por userscript em `scripts/use
 
 O Auto Refill inicia pausado. No painel, escolha potion e ball, configure threshold, quantidade e reserva de gold e então ative. A venda automática de loot comum é opcional e vende itens de NPC dentro da regra indicada na interface.
 
-O PokeDream Auto Refill também inicia pausado. Seus defaults são Small Potion com threshold 10, Poké Ball com threshold 20 e compra de 1.000 unidades por produto. Com a automação pausada, os dropdowns permitem escolher qualquer potion e ball compráveis descobertas no catálogo atual; isso controla o estoque reposto, não a configuração de consumo do bot oficial. Antes da venda, o script preserva todos os bloqueios oficiais existentes, protege por padrão todas as stones e permite que cada usuário escolha outros itens numa janela pesquisável separada do painel principal. A lista distingue itens já bloqueados no jogo das escolhas futuras do script; nenhum loot raro específico vem selecionado. A venda só entra na fila depois que o jogo confirma os novos bloqueios. O script descobre dinamicamente o store e o catálogo principal já carregados e usa as mesmas funções e a mesma fila da interface oficial, sem interceptar rede e sem depender do hash da build.
+O PokeDream Auto Refill também inicia pausado. Seus defaults são Small Potion com threshold 10, Poké Ball com threshold 20 e compra de 1.000 unidades por produto. Com a automação pausada, os dropdowns permitem escolher qualquer potion e ball compráveis descobertas no catálogo atual; isso controla o estoque reposto, não a configuração de consumo do bot oficial. Antes da venda, o script preserva todos os bloqueios oficiais existentes e permite escolher itens numa janela pesquisável separada. Os presets expansíveis de Stones e Shiny adicionam seus IDs à lista de proteções futuras e permitem retirar exceções individualmente; aplicar um preset não executa locks. A lista distingue itens já bloqueados no jogo das escolhas futuras do script. A venda só entra na fila depois que o jogo confirma os novos bloqueios. O script descobre dinamicamente o store e o catálogo principal já carregados e usa as mesmas funções e a mesma fila da interface oficial, sem interceptar rede e sem depender do hash da build.
 
 ## Observação
 

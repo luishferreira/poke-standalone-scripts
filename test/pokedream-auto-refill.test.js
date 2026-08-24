@@ -131,6 +131,12 @@ function createHarness(options = {}) {
         kind: 'loot',
         sell: 29,
       },
+      red_gyarados_tail: {
+        id: 'red_gyarados_tail',
+        name: 'Red Gyarados Tail',
+        kind: 'loot',
+        sell: 29,
+      },
       common_tail: { id: 'common_tail', name: 'Common Tail', kind: 'loot', sell: 10 },
     },
   };
@@ -247,7 +253,6 @@ test('mantém os defaults seguros e exige confirmação explícita', async () =>
     ballThreshold: 20,
     ballQuantity: 1_000,
     sellAllLoot: true,
-    protectStones: true,
     protectedItemIds: [],
   });
   assert.equal(harness.api.start(), false);
@@ -377,6 +382,7 @@ test('protege stones e itens escolhidos antes de vender, preservando locks exist
   });
   await harness.tick(0);
   assert.equal(harness.api.addProtectedItem('shiny_magikarp_fin'), true);
+  assert.equal(harness.api.applyStonePreset(), true);
   harness.api.start({ confirmed: true });
   await harness.tick(150);
 
@@ -427,6 +433,7 @@ test('stone já bloqueada não recebe um segundo toggle com o preset ativo', asy
     bagLocks: ['fire_stone'],
   });
   await harness.tick(0);
+  assert.equal(harness.api.applyStonePreset(), true);
   const protection = harness.api.status().protection;
   assert.deepEqual(Array.from(protection.missing), []);
 
@@ -439,6 +446,43 @@ test('stone já bloqueada não recebe um segundo toggle com o preset ativo', asy
   assert.deepEqual(harness.store.getState().hud.bagLocks, ['fire_stone']);
 });
 
+test('preset de stones apenas materializa a lista e permite exceção individual', async () => {
+  const harness = createHarness({
+    potion: 10,
+    ball: 21,
+    bag: { fire_stone: 4 },
+  });
+  await harness.tick(0);
+  assert.equal(harness.api.applyStonePreset(), true);
+  assert.deepEqual(harness.store.getState().actionLog, []);
+  assert.deepEqual(Array.from(harness.api.status().settings.protectedItemIds), ['fire_stone']);
+  assert.equal(harness.api.removeProtectedItem('fire_stone'), true);
+
+  harness.api.start({ confirmed: true });
+  await harness.tick(150);
+  assert.deepEqual(harness.store.getState().actionLog.map((action) => action.type), [
+    'sellAllLoot',
+    'buy',
+  ]);
+});
+
+test('preset de shiny materializa somente os itens da lista presentes no catálogo', async () => {
+  const harness = createHarness({
+    bag: {
+      red_gyarados_tail: 1,
+      shiny_magikarp_fin: 1,
+    },
+  });
+  await harness.tick(0);
+
+  assert.equal(harness.api.applyShinyPreset(), true);
+  assert.deepEqual(harness.store.getState().actionLog, []);
+  assert.deepEqual(
+    Array.from(harness.api.status().settings.protectedItemIds),
+    ['red_gyarados_tail'],
+  );
+});
+
 test('cancela a venda quando um bloqueio não aparece no estado oficial', async () => {
   const harness = createHarness({
     potion: 10,
@@ -447,6 +491,7 @@ test('cancela a venda quando um bloqueio não aparece no estado oficial', async 
     applyLocks: false,
   });
   await harness.tick(0);
+  assert.equal(harness.api.applyStonePreset(), true);
   harness.api.start({ confirmed: true });
   await harness.tick(5_500);
 
@@ -465,6 +510,7 @@ test('não vende quando o jogo deixa de enfileirar a action de bloqueio', async 
     queueLock: false,
   });
   await harness.tick(0);
+  assert.equal(harness.api.applyStonePreset(), true);
   harness.api.start({ confirmed: true });
   await harness.tick(150);
 

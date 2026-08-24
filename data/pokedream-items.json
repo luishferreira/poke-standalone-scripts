@@ -1,0 +1,4446 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "site": "https://pokedream.com.br/",
+    "buildId": "nogit.20260824-0000",
+    "asset": "/assets/DOXjuAGj.js",
+    "extractedAt": "2026-08-24T15:17:56.392Z"
+  },
+  "summary": {
+    "total": 550,
+    "byKind": {
+      "potion": 5,
+      "revive": 1,
+      "ball": 3,
+      "boost": 6,
+      "loot": 516,
+      "stone": 19
+    },
+    "buyable": 9,
+    "sellable": 535
+  },
+  "items": {
+    "small_potion": {
+      "id": "small_potion",
+      "tfsId": 27642,
+      "name": "Small Potion",
+      "kind": "potion",
+      "heal": {
+        "mode": "flat",
+        "amount": 100
+      },
+      "buy": 5,
+      "stackable": true
+    },
+    "hyper_potion": {
+      "id": "hyper_potion",
+      "tfsId": 27647,
+      "name": "Hyper Potion",
+      "kind": "potion",
+      "heal": {
+        "mode": "flat",
+        "amount": 250
+      },
+      "buy": 12,
+      "stackable": true
+    },
+    "great_potion": {
+      "id": "great_potion",
+      "tfsId": 27643,
+      "name": "Great Potion",
+      "kind": "potion",
+      "heal": {
+        "mode": "flat",
+        "amount": 500
+      },
+      "buy": 24,
+      "stackable": true
+    },
+    "ultra_potion": {
+      "id": "ultra_potion",
+      "tfsId": 27641,
+      "name": "Ultra Potion",
+      "kind": "potion",
+      "heal": {
+        "mode": "flat",
+        "amount": 1000
+      },
+      "buy": 42,
+      "stackable": true
+    },
+    "ultimate_potion": {
+      "id": "ultimate_potion",
+      "tfsId": 27646,
+      "name": "Ultimate Potion",
+      "kind": "potion",
+      "heal": {
+        "mode": "flat",
+        "amount": 2000
+      },
+      "buy": 75,
+      "stackable": true
+    },
+    "revive": {
+      "id": "revive",
+      "tfsId": 27645,
+      "name": "Revive",
+      "kind": "revive",
+      "heal": {
+        "mode": "full"
+      },
+      "buy": 300,
+      "stackable": true
+    },
+    "poke_ball": {
+      "id": "poke_ball",
+      "tfsId": 49479,
+      "name": "Poké Ball",
+      "kind": "ball",
+      "buy": 10,
+      "catchMult": 1,
+      "minCatchTier": 4,
+      "stackable": true
+    },
+    "ultra_ball": {
+      "id": "ultra_ball",
+      "tfsId": 49485,
+      "name": "Ultra Ball",
+      "kind": "ball",
+      "buy": 130,
+      "catchMult": 4,
+      "stackable": true
+    },
+    "premier_ball": {
+      "id": "premier_ball",
+      "tfsId": 49487,
+      "name": "Premier Ball",
+      "kind": "ball",
+      "buy": 200,
+      "catchMult": 4,
+      "catchAura": "premier",
+      "stackable": true
+    },
+    "bottle_cap": {
+      "id": "bottle_cap",
+      "tfsId": 0,
+      "name": "Potencial Stone",
+      "kind": "boost",
+      "stackable": true
+    },
+    "xp_charm": {
+      "id": "xp_charm",
+      "tfsId": 0,
+      "name": "Poção de Experiência",
+      "kind": "boost",
+      "stackable": true
+    },
+    "shiny_charm": {
+      "id": "shiny_charm",
+      "tfsId": 0,
+      "name": "Poção de Shiny",
+      "kind": "boost",
+      "stackable": true
+    },
+    "essence_stone_ultra": {
+      "id": "essence_stone_ultra",
+      "tfsId": 0,
+      "name": "Stone de Ultra Raro",
+      "kind": "boost",
+      "stackable": true
+    },
+    "essence_stone_legendary": {
+      "id": "essence_stone_legendary",
+      "tfsId": 0,
+      "name": "Stone de Legendary",
+      "kind": "boost",
+      "stackable": true
+    },
+    "essence_stone_mythic": {
+      "id": "essence_stone_mythic",
+      "tfsId": 0,
+      "name": "Stone de Mythic",
+      "kind": "boost",
+      "stackable": true
+    },
+    "bitten_apple": {
+      "id": "bitten_apple",
+      "tfsId": 0,
+      "name": "Bitten Apple",
+      "kind": "loot",
+      "sell": 21,
+      "stackable": true
+    },
+    "feather": {
+      "id": "feather",
+      "tfsId": 0,
+      "name": "Feather",
+      "kind": "loot",
+      "sell": 36,
+      "stackable": true
+    },
+    "straw": {
+      "id": "straw",
+      "tfsId": 0,
+      "name": "Straw",
+      "kind": "loot",
+      "sell": 6,
+      "stackable": true
+    },
+    "pot_of_moss_bug": {
+      "id": "pot_of_moss_bug",
+      "tfsId": 0,
+      "name": "Pot of Moss Bug",
+      "kind": "loot",
+      "sell": 44,
+      "stackable": true
+    },
+    "bottle_of_poison": {
+      "id": "bottle_of_poison",
+      "tfsId": 0,
+      "name": "Bottle of Poison",
+      "kind": "loot",
+      "sell": 6,
+      "stackable": true
+    },
+    "lizard_tail": {
+      "id": "lizard_tail",
+      "tfsId": 0,
+      "name": "Lizard Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 376
+    },
+    "black_lizard_tail": {
+      "id": "black_lizard_tail",
+      "tfsId": 0,
+      "name": "Black Lizard Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "big_crest": {
+      "id": "big_crest",
+      "tfsId": 0,
+      "name": "Big Crest",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 661
+    },
+    "handful_of_yellow_stones": {
+      "id": "handful_of_yellow_stones",
+      "tfsId": 0,
+      "name": "Handful of Yellow Stones",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "pristine_punching_glove": {
+      "id": "pristine_punching_glove",
+      "tfsId": 0,
+      "name": "Pristine Punching Glove",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "green_tentacle": {
+      "id": "green_tentacle",
+      "tfsId": 0,
+      "name": "Green Tentacle",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "virtual_head": {
+      "id": "virtual_head",
+      "tfsId": 0,
+      "name": "Virtual Head",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 391
+    },
+    "cyber_head": {
+      "id": "cyber_head",
+      "tfsId": 0,
+      "name": "Cyber Head",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "old_amber": {
+      "id": "old_amber",
+      "tfsId": 0,
+      "name": "Old Amber",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "seed": {
+      "id": "seed",
+      "tfsId": 0,
+      "name": "Seed",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 6
+    },
+    "bulb": {
+      "id": "bulb",
+      "tfsId": 0,
+      "name": "Bulb",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "leaf": {
+      "id": "leaf",
+      "tfsId": 0,
+      "name": "Leaf",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "red_petal": {
+      "id": "red_petal",
+      "tfsId": 0,
+      "name": "Red Petal",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "essence_of_fire": {
+      "id": "essence_of_fire",
+      "tfsId": 0,
+      "name": "Essence Of Fire",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 6
+    },
+    "fire_tail": {
+      "id": "fire_tail",
+      "tfsId": 0,
+      "name": "Fire Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 162
+    },
+    "fire_wing": {
+      "id": "fire_wing",
+      "tfsId": 0,
+      "name": "Fire Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 661
+    },
+    "water_gem": {
+      "id": "water_gem",
+      "tfsId": 0,
+      "name": "Water Gem",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 6
+    },
+    "squirtle_hull": {
+      "id": "squirtle_hull",
+      "tfsId": 0,
+      "name": "Squirtle Hull",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "wartortle_ear": {
+      "id": "wartortle_ear",
+      "tfsId": 0,
+      "name": "Wartortle Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "water_cannon": {
+      "id": "water_cannon",
+      "tfsId": 0,
+      "name": "Water Cannon",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "bug_gosme": {
+      "id": "bug_gosme",
+      "tfsId": 0,
+      "name": "Bug Gosme",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 6
+    },
+    "caterpie_antenna": {
+      "id": "caterpie_antenna",
+      "tfsId": 0,
+      "name": "Caterpie Antenna",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 55
+    },
+    "piece_of_cocoon": {
+      "id": "piece_of_cocoon",
+      "tfsId": 0,
+      "name": "Piece Of Cocoon",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "butterfree_wing": {
+      "id": "butterfree_wing",
+      "tfsId": 0,
+      "name": "Butterfree Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 249
+    },
+    "poison_sting": {
+      "id": "poison_sting",
+      "tfsId": 0,
+      "name": "Poison Sting",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 55
+    },
+    "yellow_cocoon": {
+      "id": "yellow_cocoon",
+      "tfsId": 0,
+      "name": "Yellow Cocoon",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 91
+    },
+    "bee_sting": {
+      "id": "bee_sting",
+      "tfsId": 0,
+      "name": "Bee Sting",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 277
+    },
+    "rubber_ball": {
+      "id": "rubber_ball",
+      "tfsId": 0,
+      "name": "Rubber Ball",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 6
+    },
+    "bird_crest": {
+      "id": "bird_crest",
+      "tfsId": 0,
+      "name": "Bird Crest",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 55
+    },
+    "bird_tail": {
+      "id": "bird_tail",
+      "tfsId": 0,
+      "name": "Bird Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 162
+    },
+    "mouse_tail": {
+      "id": "mouse_tail",
+      "tfsId": 0,
+      "name": "Mouse Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 55
+    },
+    "rat_ear": {
+      "id": "rat_ear",
+      "tfsId": 0,
+      "name": "Rat Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 249
+    },
+    "bird_wing": {
+      "id": "bird_wing",
+      "tfsId": 0,
+      "name": "Bird Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "pointy_beak": {
+      "id": "pointy_beak",
+      "tfsId": 0,
+      "name": "Pointy Beak",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 410
+    },
+    "snake_tail": {
+      "id": "snake_tail",
+      "tfsId": 0,
+      "name": "Snake Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "cobra_tail": {
+      "id": "cobra_tail",
+      "tfsId": 0,
+      "name": "Cobra Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 376
+    },
+    "screw": {
+      "id": "screw",
+      "tfsId": 0,
+      "name": "Screw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 6
+    },
+    "electric_rat_tail": {
+      "id": "electric_rat_tail",
+      "tfsId": 0,
+      "name": "Electric Rat Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 410
+    },
+    "electric_ear": {
+      "id": "electric_ear",
+      "tfsId": 0,
+      "name": "Electric Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "earth_ball": {
+      "id": "earth_ball",
+      "tfsId": 0,
+      "name": "Earth Ball",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 6
+    },
+    "armadillo_tail": {
+      "id": "armadillo_tail",
+      "tfsId": 0,
+      "name": "Armadillo Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "armadillo_claw": {
+      "id": "armadillo_claw",
+      "tfsId": 0,
+      "name": "Armadillo Claw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 500
+    },
+    "small_blue_ear": {
+      "id": "small_blue_ear",
+      "tfsId": 0,
+      "name": "Small Blue Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 91
+    },
+    "blue_nido_ear": {
+      "id": "blue_nido_ear",
+      "tfsId": 0,
+      "name": "Blue Nido Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 277
+    },
+    "queen_ear": {
+      "id": "queen_ear",
+      "tfsId": 0,
+      "name": "Queen Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 661
+    },
+    "small_purple_ear": {
+      "id": "small_purple_ear",
+      "tfsId": 0,
+      "name": "Small Purple Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "purple_nido_ear": {
+      "id": "purple_nido_ear",
+      "tfsId": 0,
+      "name": "Purple Nido Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 249
+    },
+    "king_ear": {
+      "id": "king_ear",
+      "tfsId": 0,
+      "name": "King Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "fairy_essence": {
+      "id": "fairy_essence",
+      "tfsId": 0,
+      "name": "Fairy Essence",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 6
+    },
+    "moon_topknot": {
+      "id": "moon_topknot",
+      "tfsId": 0,
+      "name": "Moon Topknot",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "pink_wings": {
+      "id": "pink_wings",
+      "tfsId": 0,
+      "name": "Pink Wings",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 661
+    },
+    "canine_tail": {
+      "id": "canine_tail",
+      "tfsId": 0,
+      "name": "Canine Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 162
+    },
+    "fox_tail": {
+      "id": "fox_tail",
+      "tfsId": 0,
+      "name": "Fox Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "microphone": {
+      "id": "microphone",
+      "tfsId": 0,
+      "name": "Microphone",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 376
+    },
+    "wigglytuff_ear": {
+      "id": "wigglytuff_ear",
+      "tfsId": 0,
+      "name": "Wigglytuff Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 661
+    },
+    "bat_wing": {
+      "id": "bat_wing",
+      "tfsId": 0,
+      "name": "Bat Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 91
+    },
+    "vampire_wing": {
+      "id": "vampire_wing",
+      "tfsId": 0,
+      "name": "Vampire Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "leaves": {
+      "id": "leaves",
+      "tfsId": 0,
+      "name": "Leaves",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 55
+    },
+    "poison_bulb": {
+      "id": "poison_bulb",
+      "tfsId": 0,
+      "name": "Poison Bulb",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 277
+    },
+    "poison_petal": {
+      "id": "poison_petal",
+      "tfsId": 0,
+      "name": "Poison Petal",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 410
+    },
+    "mushroom": {
+      "id": "mushroom",
+      "tfsId": 0,
+      "name": "Mushroom",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 55
+    },
+    "big_mushroom": {
+      "id": "big_mushroom",
+      "tfsId": 0,
+      "name": "Big Mushroom",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 410
+    },
+    "bug_antenna": {
+      "id": "bug_antenna",
+      "tfsId": 0,
+      "name": "Bug Antenna",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "moth_wing": {
+      "id": "moth_wing",
+      "tfsId": 0,
+      "name": "Moth Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 410
+    },
+    "small_handfull_of_stones": {
+      "id": "small_handfull_of_stones",
+      "tfsId": 0,
+      "name": "Small Handfull Of Stones",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "handful_of_stones": {
+      "id": "handful_of_stones",
+      "tfsId": 0,
+      "name": "Handful Of Stones",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 376
+    },
+    "luck_medallion": {
+      "id": "luck_medallion",
+      "tfsId": 0,
+      "name": "Luck Medallion",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 162
+    },
+    "wool_ball": {
+      "id": "wool_ball",
+      "tfsId": 0,
+      "name": "Wool Ball",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 410
+    },
+    "duck_beak": {
+      "id": "duck_beak",
+      "tfsId": 0,
+      "name": "Duck Beak",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "duck_paw": {
+      "id": "duck_paw",
+      "tfsId": 0,
+      "name": "Duck Paw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 519
+    },
+    "band_aid": {
+      "id": "band_aid",
+      "tfsId": 0,
+      "name": "Band Aid",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 6
+    },
+    "mankey_tail": {
+      "id": "mankey_tail",
+      "tfsId": 0,
+      "name": "Mankey Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 91
+    },
+    "iron_bracelet": {
+      "id": "iron_bracelet",
+      "tfsId": 0,
+      "name": "Iron Bracelet",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 410
+    },
+    "dog_fur": {
+      "id": "dog_fur",
+      "tfsId": 0,
+      "name": "Dog Fur",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 249
+    },
+    "giant_piece_of_fur": {
+      "id": "giant_piece_of_fur",
+      "tfsId": 0,
+      "name": "Giant Piece Of Fur",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 855
+    },
+    "frog_tail": {
+      "id": "frog_tail",
+      "tfsId": 0,
+      "name": "Frog Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 55
+    },
+    "small_box_gloves": {
+      "id": "small_box_gloves",
+      "tfsId": 0,
+      "name": "Small Box Gloves",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 277
+    },
+    "big_fist_gloves": {
+      "id": "big_fist_gloves",
+      "tfsId": 0,
+      "name": "Big Fist Gloves",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "enchanted_gem": {
+      "id": "enchanted_gem",
+      "tfsId": 0,
+      "name": "Enchanted Gem",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 6
+    },
+    "psychic_vest": {
+      "id": "psychic_vest",
+      "tfsId": 0,
+      "name": "Psychic Vest",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "psychic_spoon": {
+      "id": "psychic_spoon",
+      "tfsId": 0,
+      "name": "Psychic Spoon",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "psychic_moustache": {
+      "id": "psychic_moustache",
+      "tfsId": 0,
+      "name": "Psychic Moustache",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "fighter_hawk": {
+      "id": "fighter_hawk",
+      "tfsId": 0,
+      "name": "Fighter Hawk",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 162
+    },
+    "fighter_underwear": {
+      "id": "fighter_underwear",
+      "tfsId": 0,
+      "name": "Fighter Underwear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 376
+    },
+    "belt_of_champion": {
+      "id": "belt_of_champion",
+      "tfsId": 0,
+      "name": "Belt Of Champion",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 661
+    },
+    "flower_stem": {
+      "id": "flower_stem",
+      "tfsId": 0,
+      "name": "Flower Stem",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 55
+    },
+    "weepinbell_leaves": {
+      "id": "weepinbell_leaves",
+      "tfsId": 0,
+      "name": "Weepinbell Leaves",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 249
+    },
+    "victreebell_tail": {
+      "id": "victreebell_tail",
+      "tfsId": 0,
+      "name": "Victreebell Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 500
+    },
+    "tentacle": {
+      "id": "tentacle",
+      "tfsId": 0,
+      "name": "Tentacle",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "giant_ruby": {
+      "id": "giant_ruby",
+      "tfsId": 0,
+      "name": "Giant Ruby",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "rock_fist": {
+      "id": "rock_fist",
+      "tfsId": 0,
+      "name": "Rock Fist",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 91
+    },
+    "rock_forehead": {
+      "id": "rock_forehead",
+      "tfsId": 0,
+      "name": "Rock Forehead",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "stone_rocks": {
+      "id": "stone_rocks",
+      "tfsId": 0,
+      "name": "Stone Rocks",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 661
+    },
+    "fire_hair": {
+      "id": "fire_hair",
+      "tfsId": 0,
+      "name": "Fire Hair",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "fire_hoof": {
+      "id": "fire_hoof",
+      "tfsId": 0,
+      "name": "Fire Hoof",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "slowpoke_tail": {
+      "id": "slowpoke_tail",
+      "tfsId": 0,
+      "name": "Slowpoke Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "slowbro_shell": {
+      "id": "slowbro_shell",
+      "tfsId": 0,
+      "name": "Slowbro Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 410
+    },
+    "piece_of_steel": {
+      "id": "piece_of_steel",
+      "tfsId": 0,
+      "name": "Piece Of Steel",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 6
+    },
+    "electric_screws": {
+      "id": "electric_screws",
+      "tfsId": 0,
+      "name": "Electric Screws",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "magnet": {
+      "id": "magnet",
+      "tfsId": 0,
+      "name": "Magnet",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "farfetchd_wing": {
+      "id": "farfetchd_wing",
+      "tfsId": 0,
+      "name": "Farfetch'd Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 410
+    },
+    "doduo_fur": {
+      "id": "doduo_fur",
+      "tfsId": 0,
+      "name": "Doduo Fur",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "dodrio_feather": {
+      "id": "dodrio_feather",
+      "tfsId": 0,
+      "name": "Dodrio Feather",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 410
+    },
+    "seel_tail": {
+      "id": "seel_tail",
+      "tfsId": 0,
+      "name": "Seel Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 162
+    },
+    "snowball": {
+      "id": "snowball",
+      "tfsId": 0,
+      "name": "Snowball",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 6
+    },
+    "dewgong_tail": {
+      "id": "dewgong_tail",
+      "tfsId": 0,
+      "name": "Dewgong Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 428
+    },
+    "stinky_gosme": {
+      "id": "stinky_gosme",
+      "tfsId": 0,
+      "name": "Stinky Gosme",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "stinky_hand": {
+      "id": "stinky_hand",
+      "tfsId": 0,
+      "name": "Stinky Hand",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 661
+    },
+    "locksmith_of_shell": {
+      "id": "locksmith_of_shell",
+      "tfsId": 0,
+      "name": "Locksmith Of Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "pieces_of_shell": {
+      "id": "pieces_of_shell",
+      "tfsId": 0,
+      "name": "Pieces Of Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 447
+    },
+    "ghost_essence": {
+      "id": "ghost_essence",
+      "tfsId": 0,
+      "name": "Ghost Essence",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 6
+    },
+    "ghost_bottle": {
+      "id": "ghost_bottle",
+      "tfsId": 0,
+      "name": "Ghost Bottle",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "ghost_claw": {
+      "id": "ghost_claw",
+      "tfsId": 0,
+      "name": "Ghost Claw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "ectoplasm": {
+      "id": "ectoplasm",
+      "tfsId": 0,
+      "name": "Ectoplasm",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "onix_tail": {
+      "id": "onix_tail",
+      "tfsId": 0,
+      "name": "Onix Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 410
+    },
+    "drowzee_trunk": {
+      "id": "drowzee_trunk",
+      "tfsId": 0,
+      "name": "Drowzee Trunk",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 277
+    },
+    "hypnosis_pendant": {
+      "id": "hypnosis_pendant",
+      "tfsId": 0,
+      "name": "Hypnosis Pendant",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 410
+    },
+    "crab_claw": {
+      "id": "crab_claw",
+      "tfsId": 0,
+      "name": "Crab Claw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "red_guillotine": {
+      "id": "red_guillotine",
+      "tfsId": 0,
+      "name": "Red Guillotine",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 391
+    },
+    "remains_of_voltorb": {
+      "id": "remains_of_voltorb",
+      "tfsId": 0,
+      "name": "Remains Of Voltorb",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "remains_of_electrode": {
+      "id": "remains_of_electrode",
+      "tfsId": 0,
+      "name": "Remains Of Electrode",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "exeggcute_seed": {
+      "id": "exeggcute_seed",
+      "tfsId": 0,
+      "name": "Exeggcute Seed",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "coconut_leaves": {
+      "id": "coconut_leaves",
+      "tfsId": 0,
+      "name": "Coconut Leaves",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "cubone_skull": {
+      "id": "cubone_skull",
+      "tfsId": 0,
+      "name": "Cubone Skull",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "bone": {
+      "id": "bone",
+      "tfsId": 0,
+      "name": "Bone",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 410
+    },
+    "power_bracer": {
+      "id": "power_bracer",
+      "tfsId": 0,
+      "name": "Power Bracer",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "kick_machine": {
+      "id": "kick_machine",
+      "tfsId": 0,
+      "name": "Kick Machine",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 428
+    },
+    "power_belt": {
+      "id": "power_belt",
+      "tfsId": 0,
+      "name": "Power Belt",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "punching_machine": {
+      "id": "punching_machine",
+      "tfsId": 0,
+      "name": "Punching Machine",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 447
+    },
+    "big_tongue": {
+      "id": "big_tongue",
+      "tfsId": 0,
+      "name": "Big Tongue",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 428
+    },
+    "poison_pore": {
+      "id": "poison_pore",
+      "tfsId": 0,
+      "name": "Poison Pore",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "toxic_scale": {
+      "id": "toxic_scale",
+      "tfsId": 0,
+      "name": "Toxic Scale",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 410
+    },
+    "hardrock_shell": {
+      "id": "hardrock_shell",
+      "tfsId": 0,
+      "name": "Hardrock Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 249
+    },
+    "horn_drill": {
+      "id": "horn_drill",
+      "tfsId": 0,
+      "name": "Horn Drill",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "lucky_egg": {
+      "id": "lucky_egg",
+      "tfsId": 0,
+      "name": "Lucky Egg",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 447
+    },
+    "vine_hair": {
+      "id": "vine_hair",
+      "tfsId": 0,
+      "name": "Vine Hair",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 410
+    },
+    "kangaskhan_ear": {
+      "id": "kangaskhan_ear",
+      "tfsId": 0,
+      "name": "Kangaskhan Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "horsea_tail": {
+      "id": "horsea_tail",
+      "tfsId": 0,
+      "name": "Horsea Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "seadra_fin": {
+      "id": "seadra_fin",
+      "tfsId": 0,
+      "name": "Seadra Fin",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 391
+    },
+    "goldeen_tail": {
+      "id": "goldeen_tail",
+      "tfsId": 0,
+      "name": "Goldeen Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "seaking_tail": {
+      "id": "seaking_tail",
+      "tfsId": 0,
+      "name": "Seaking Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "star_core": {
+      "id": "star_core",
+      "tfsId": 0,
+      "name": "Star Core",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 162
+    },
+    "star_jewel": {
+      "id": "star_jewel",
+      "tfsId": 0,
+      "name": "Star Jewel",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "mimic_clothes": {
+      "id": "mimic_clothes",
+      "tfsId": 0,
+      "name": "Mimic Clothes",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "scythe": {
+      "id": "scythe",
+      "tfsId": 0,
+      "name": "Scythe",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "psychic_wig": {
+      "id": "psychic_wig",
+      "tfsId": 0,
+      "name": "Psychic Wig",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "electric_tail": {
+      "id": "electric_tail",
+      "tfsId": 0,
+      "name": "Electric Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "magma_foot": {
+      "id": "magma_foot",
+      "tfsId": 0,
+      "name": "Magma Foot",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "pinsir_horn": {
+      "id": "pinsir_horn",
+      "tfsId": 0,
+      "name": "Pinsir Horn",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "bull_tail": {
+      "id": "bull_tail",
+      "tfsId": 0,
+      "name": "Bull Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "magikarp_fin": {
+      "id": "magikarp_fin",
+      "tfsId": 0,
+      "name": "Magikarp Fin",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 55
+    },
+    "gyarados_tail": {
+      "id": "gyarados_tail",
+      "tfsId": 0,
+      "name": "Gyarados Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "lapras_fin": {
+      "id": "lapras_fin",
+      "tfsId": 0,
+      "name": "Lapras Fin",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "dna_gosme": {
+      "id": "dna_gosme",
+      "tfsId": 0,
+      "name": "Dna Gosme",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 15
+    },
+    "furry_tail": {
+      "id": "furry_tail",
+      "tfsId": 0,
+      "name": "Furry Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "aquatic_tail": {
+      "id": "aquatic_tail",
+      "tfsId": 0,
+      "name": "Aquatic Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "electric_collar": {
+      "id": "electric_collar",
+      "tfsId": 0,
+      "name": "Electric Collar",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "blaze_tail": {
+      "id": "blaze_tail",
+      "tfsId": 0,
+      "name": "Blaze Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "helix_shell": {
+      "id": "helix_shell",
+      "tfsId": 0,
+      "name": "Helix Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 162
+    },
+    "spike_shell": {
+      "id": "spike_shell",
+      "tfsId": 0,
+      "name": "Spike Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "dome_shell": {
+      "id": "dome_shell",
+      "tfsId": 0,
+      "name": "Dome Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "gray_scythe": {
+      "id": "gray_scythe",
+      "tfsId": 0,
+      "name": "Gray Scythe",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "membranous_wing": {
+      "id": "membranous_wing",
+      "tfsId": 0,
+      "name": "Membranous Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "snorlax_paw": {
+      "id": "snorlax_paw",
+      "tfsId": 0,
+      "name": "Snorlax Paw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "dragon_scale": {
+      "id": "dragon_scale",
+      "tfsId": 0,
+      "name": "Dragon Scale",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 6
+    },
+    "dratini_ear": {
+      "id": "dratini_ear",
+      "tfsId": 0,
+      "name": "Dratini Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 277
+    },
+    "dragonair_tail": {
+      "id": "dragonair_tail",
+      "tfsId": 0,
+      "name": "Dragonair Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "dragonite_tail": {
+      "id": "dragonite_tail",
+      "tfsId": 0,
+      "name": "Dragonite Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 642
+    },
+    "brown_bulb": {
+      "id": "brown_bulb",
+      "tfsId": 0,
+      "name": "Brown Bulb",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "purple_leaf": {
+      "id": "purple_leaf",
+      "tfsId": 0,
+      "name": "Purple Leaf",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "brown_petal": {
+      "id": "brown_petal",
+      "tfsId": 0,
+      "name": "Brown Petal",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "black_tail": {
+      "id": "black_tail",
+      "tfsId": 0,
+      "name": "Black Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "dark_wing": {
+      "id": "dark_wing",
+      "tfsId": 0,
+      "name": "Dark Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "cyan_hull": {
+      "id": "cyan_hull",
+      "tfsId": 0,
+      "name": "Cyan Hull",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "cyan_ear": {
+      "id": "cyan_ear",
+      "tfsId": 0,
+      "name": "Cyan Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "giant_water_cannon": {
+      "id": "giant_water_cannon",
+      "tfsId": 0,
+      "name": "Giant Water Cannon",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "sparkle_antenna": {
+      "id": "sparkle_antenna",
+      "tfsId": 0,
+      "name": "Sparkle Antenna",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 29
+    },
+    "red_piece_of_cocoon": {
+      "id": "red_piece_of_cocoon",
+      "tfsId": 0,
+      "name": "Red Piece Of Cocoon",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "pink_wing": {
+      "id": "pink_wing",
+      "tfsId": 0,
+      "name": "Pink Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "yellow_sting": {
+      "id": "yellow_sting",
+      "tfsId": 0,
+      "name": "Yellow Sting",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 29
+    },
+    "red_cocoon": {
+      "id": "red_cocoon",
+      "tfsId": 0,
+      "name": "Red Cocoon",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "red_bee_sting": {
+      "id": "red_bee_sting",
+      "tfsId": 0,
+      "name": "Red Bee Sting",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "yellow_bird_crest": {
+      "id": "yellow_bird_crest",
+      "tfsId": 0,
+      "name": "Yellow Bird Crest",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 29
+    },
+    "two_colored_tail": {
+      "id": "two_colored_tail",
+      "tfsId": 0,
+      "name": "Two-Colored Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "two_colored_crest": {
+      "id": "two_colored_crest",
+      "tfsId": 0,
+      "name": "Two-Colored Crest",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "blue_mouse_tail": {
+      "id": "blue_mouse_tail",
+      "tfsId": 0,
+      "name": "Blue Mouse Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 29
+    },
+    "blue_rat_ear": {
+      "id": "blue_rat_ear",
+      "tfsId": 0,
+      "name": "Blue Rat Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "carmine_wing": {
+      "id": "carmine_wing",
+      "tfsId": 0,
+      "name": "Carmine Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 29
+    },
+    "red_pointy_beak": {
+      "id": "red_pointy_beak",
+      "tfsId": 0,
+      "name": "Red Pointy Beak",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "gray_snake_tail": {
+      "id": "gray_snake_tail",
+      "tfsId": 0,
+      "name": "Gray Snake Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "black_cobra_tail": {
+      "id": "black_cobra_tail",
+      "tfsId": 0,
+      "name": "Black Cobra Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "electric_white_ear": {
+      "id": "electric_white_ear",
+      "tfsId": 0,
+      "name": "Electric White Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "armadillo_red_tail": {
+      "id": "armadillo_red_tail",
+      "tfsId": 0,
+      "name": "Armadillo Red Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "shining_claws": {
+      "id": "shining_claws",
+      "tfsId": 0,
+      "name": "Shining Claws",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "small_green_ear": {
+      "id": "small_green_ear",
+      "tfsId": 0,
+      "name": "Small Green Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "green_nido_ear": {
+      "id": "green_nido_ear",
+      "tfsId": 0,
+      "name": "Green Nido Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "green_queen_ear": {
+      "id": "green_queen_ear",
+      "tfsId": 0,
+      "name": "Green Queen Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "blue_nido_ear_ear": {
+      "id": "blue_nido_ear_ear",
+      "tfsId": 0,
+      "name": "Blue Nido Ear Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "blue_king_ear": {
+      "id": "blue_king_ear",
+      "tfsId": 0,
+      "name": "Blue King Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "purple_moon_topknot": {
+      "id": "purple_moon_topknot",
+      "tfsId": 0,
+      "name": "Purple Moon Topknot",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "blue_wings": {
+      "id": "blue_wings",
+      "tfsId": 0,
+      "name": "Blue Wings",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "blue_canine_tail": {
+      "id": "blue_canine_tail",
+      "tfsId": 0,
+      "name": "Blue Canine Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "blue_fox_tail": {
+      "id": "blue_fox_tail",
+      "tfsId": 0,
+      "name": "Blue Fox Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "loud_microphone": {
+      "id": "loud_microphone",
+      "tfsId": 0,
+      "name": "Loud Microphone",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 29
+    },
+    "big_cute_ear": {
+      "id": "big_cute_ear",
+      "tfsId": 0,
+      "name": "Big Cute Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "green_bat_wing": {
+      "id": "green_bat_wing",
+      "tfsId": 0,
+      "name": "Green Bat Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "green_vampire_wing": {
+      "id": "green_vampire_wing",
+      "tfsId": 0,
+      "name": "Green Vampire Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "radiant_leaves": {
+      "id": "radiant_leaves",
+      "tfsId": 0,
+      "name": "Radiant Leaves",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "brown_poison_bulb": {
+      "id": "brown_poison_bulb",
+      "tfsId": 0,
+      "name": "Brown Poison Bulb",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "yellow_poison_petal": {
+      "id": "yellow_poison_petal",
+      "tfsId": 0,
+      "name": "Yellow Poison Petal",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "green_mushroom": {
+      "id": "green_mushroom",
+      "tfsId": 0,
+      "name": "Green Mushroom",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "green_big_mushroom": {
+      "id": "green_big_mushroom",
+      "tfsId": 0,
+      "name": "Green Big Mushroom",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "blue_bug_antenna": {
+      "id": "blue_bug_antenna",
+      "tfsId": 0,
+      "name": "Blue Bug Antenna",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "blue_moth_wing": {
+      "id": "blue_moth_wing",
+      "tfsId": 0,
+      "name": "Blue Moth Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "small_yellow_stones": {
+      "id": "small_yellow_stones",
+      "tfsId": 0,
+      "name": "Small Yellow Stones",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "pink_medallion": {
+      "id": "pink_medallion",
+      "tfsId": 0,
+      "name": "Pink Medallion",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "white_ball": {
+      "id": "white_ball",
+      "tfsId": 0,
+      "name": "White Ball",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "gray_duck_beak": {
+      "id": "gray_duck_beak",
+      "tfsId": 0,
+      "name": "Gray Duck Beak",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "gray_duck_paw": {
+      "id": "gray_duck_paw",
+      "tfsId": 0,
+      "name": "Gray Duck Paw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "white_monkey_tail": {
+      "id": "white_monkey_tail",
+      "tfsId": 0,
+      "name": "White Monkey Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "metal_bracelet": {
+      "id": "metal_bracelet",
+      "tfsId": 0,
+      "name": "Metal Bracelet",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "yellow_dog_fur": {
+      "id": "yellow_dog_fur",
+      "tfsId": 0,
+      "name": "Yellow Dog Fur",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "giant_white_fur": {
+      "id": "giant_white_fur",
+      "tfsId": 0,
+      "name": "Giant White Fur",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "gray_frog_tail": {
+      "id": "gray_frog_tail",
+      "tfsId": 0,
+      "name": "Gray Frog Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "pristine_small_gloves": {
+      "id": "pristine_small_gloves",
+      "tfsId": 0,
+      "name": "Pristine Small Gloves",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "blue_psychic_vest": {
+      "id": "blue_psychic_vest",
+      "tfsId": 0,
+      "name": "Blue Psychic Vest",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "enchanted_spoon": {
+      "id": "enchanted_spoon",
+      "tfsId": 0,
+      "name": "Enchanted Spoon",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "purple_moustache": {
+      "id": "purple_moustache",
+      "tfsId": 0,
+      "name": "Purple Moustache",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "blond_hawk": {
+      "id": "blond_hawk",
+      "tfsId": 0,
+      "name": "Blond Hawk",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 29
+    },
+    "champion_underwear": {
+      "id": "champion_underwear",
+      "tfsId": 0,
+      "name": "Champion Underwear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "master_belt": {
+      "id": "master_belt",
+      "tfsId": 0,
+      "name": "Master Belt",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "red_stem": {
+      "id": "red_stem",
+      "tfsId": 0,
+      "name": "Red Stem",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "cyan_leaves": {
+      "id": "cyan_leaves",
+      "tfsId": 0,
+      "name": "Cyan Leaves",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "yellow_plant_tail": {
+      "id": "yellow_plant_tail",
+      "tfsId": 0,
+      "name": "Yellow Plant Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "emerald": {
+      "id": "emerald",
+      "tfsId": 0,
+      "name": "Emerald",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "purple_fist": {
+      "id": "purple_fist",
+      "tfsId": 0,
+      "name": "Purple Fist",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "purple_stone_forehead": {
+      "id": "purple_stone_forehead",
+      "tfsId": 0,
+      "name": "Purple Stone Forehead",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "black_rocks": {
+      "id": "black_rocks",
+      "tfsId": 0,
+      "name": "Black Rocks",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "blue_hair": {
+      "id": "blue_hair",
+      "tfsId": 0,
+      "name": "Blue Hair",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "blue_fire_hoof": {
+      "id": "blue_fire_hoof",
+      "tfsId": 0,
+      "name": "Blue Fire Hoof",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "purple_slowpoke_tail": {
+      "id": "purple_slowpoke_tail",
+      "tfsId": 0,
+      "name": "Purple Slowpoke Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "unbreakable_shell": {
+      "id": "unbreakable_shell",
+      "tfsId": 0,
+      "name": "Unbreakable Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "blue_screws": {
+      "id": "blue_screws",
+      "tfsId": 0,
+      "name": "Blue Screws",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "strong_magnet": {
+      "id": "strong_magnet",
+      "tfsId": 0,
+      "name": "Strong Magnet",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "dark_brown_wings": {
+      "id": "dark_brown_wings",
+      "tfsId": 0,
+      "name": "Dark Brown Wings",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "gray_fur": {
+      "id": "gray_fur",
+      "tfsId": 0,
+      "name": "Gray Fur",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "black_feather": {
+      "id": "black_feather",
+      "tfsId": 0,
+      "name": "Black Feather",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "blue_seel_tail": {
+      "id": "blue_seel_tail",
+      "tfsId": 0,
+      "name": "Blue Seel Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "blue_dewgong_tail": {
+      "id": "blue_dewgong_tail",
+      "tfsId": 0,
+      "name": "Blue Dewgong Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "disgusting_gosme": {
+      "id": "disgusting_gosme",
+      "tfsId": 0,
+      "name": "Disgusting Gosme",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "disgusting_hand": {
+      "id": "disgusting_hand",
+      "tfsId": 0,
+      "name": "Disgusting Hand",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "blue_shell": {
+      "id": "blue_shell",
+      "tfsId": 0,
+      "name": "Blue Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "blue_pieces_of_shell": {
+      "id": "blue_pieces_of_shell",
+      "tfsId": 0,
+      "name": "Blue Pieces Of Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "green_ghost_bottle": {
+      "id": "green_ghost_bottle",
+      "tfsId": 0,
+      "name": "Green Ghost Bottle",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "dark_claw": {
+      "id": "dark_claw",
+      "tfsId": 0,
+      "name": "Dark Claw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "dark_ectoplasm": {
+      "id": "dark_ectoplasm",
+      "tfsId": 0,
+      "name": "Dark Ectoplasm",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "gold_tail": {
+      "id": "gold_tail",
+      "tfsId": 0,
+      "name": "Gold Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "orange_trunk": {
+      "id": "orange_trunk",
+      "tfsId": 0,
+      "name": "Orange Trunk",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "enchanted_pendant": {
+      "id": "enchanted_pendant",
+      "tfsId": 0,
+      "name": "Enchanted Pendant",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "blue_claw": {
+      "id": "blue_claw",
+      "tfsId": 0,
+      "name": "Blue Claw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 29
+    },
+    "blue_guillotine": {
+      "id": "blue_guillotine",
+      "tfsId": 0,
+      "name": "Blue Guillotine",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "green_remains": {
+      "id": "green_remains",
+      "tfsId": 0,
+      "name": "Green Remains",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "big_green_piece": {
+      "id": "big_green_piece",
+      "tfsId": 0,
+      "name": "Big Green Piece",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "green_seeds": {
+      "id": "green_seeds",
+      "tfsId": 0,
+      "name": "Green Seeds",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "blue_coconut_leaves": {
+      "id": "blue_coconut_leaves",
+      "tfsId": 0,
+      "name": "Blue Coconut Leaves",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "cyan_skull": {
+      "id": "cyan_skull",
+      "tfsId": 0,
+      "name": "Cyan Skull",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "blue_bone": {
+      "id": "blue_bone",
+      "tfsId": 0,
+      "name": "Blue Bone",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "gray_kick_machine": {
+      "id": "gray_kick_machine",
+      "tfsId": 0,
+      "name": "Gray Kick Machine",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "blue_punching_machine": {
+      "id": "blue_punching_machine",
+      "tfsId": 0,
+      "name": "Blue Punching Machine",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "yellow_tongue": {
+      "id": "yellow_tongue",
+      "tfsId": 0,
+      "name": "Yellow Tongue",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "contagious_pore": {
+      "id": "contagious_pore",
+      "tfsId": 0,
+      "name": "Contagious Pore",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 29
+    },
+    "gray_toxic_scale": {
+      "id": "gray_toxic_scale",
+      "tfsId": 0,
+      "name": "Gray Toxic Scale",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "golden_shell": {
+      "id": "golden_shell",
+      "tfsId": 0,
+      "name": "Golden Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "golden_drill": {
+      "id": "golden_drill",
+      "tfsId": 0,
+      "name": "Golden Drill",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "purple_egg": {
+      "id": "purple_egg",
+      "tfsId": 0,
+      "name": "Purple Egg",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "green_vine": {
+      "id": "green_vine",
+      "tfsId": 0,
+      "name": "Green Vine",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "kangaskhan_blue_ear": {
+      "id": "kangaskhan_blue_ear",
+      "tfsId": 0,
+      "name": "Kangaskhan Blue Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "white_tail": {
+      "id": "white_tail",
+      "tfsId": 0,
+      "name": "White Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "white_fin": {
+      "id": "white_fin",
+      "tfsId": 0,
+      "name": "White Fin",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "blue_tail": {
+      "id": "blue_tail",
+      "tfsId": 0,
+      "name": "Blue Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "purple_big_tail": {
+      "id": "purple_big_tail",
+      "tfsId": 0,
+      "name": "Purple Big Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "glowing_core": {
+      "id": "glowing_core",
+      "tfsId": 0,
+      "name": "Glowing Core",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "malfunctioning_core": {
+      "id": "malfunctioning_core",
+      "tfsId": 0,
+      "name": "Malfunctioning Core",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "mimic_blue_clothes": {
+      "id": "mimic_blue_clothes",
+      "tfsId": 0,
+      "name": "Mimic Blue Clothes",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "blue_scythe": {
+      "id": "blue_scythe",
+      "tfsId": 0,
+      "name": "Blue Scythe",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "white_wig": {
+      "id": "white_wig",
+      "tfsId": 0,
+      "name": "White Wig",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "electric_white_tail": {
+      "id": "electric_white_tail",
+      "tfsId": 0,
+      "name": "Electric White Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "magma_red_foot": {
+      "id": "magma_red_foot",
+      "tfsId": 0,
+      "name": "Magma Red Foot",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "white_bug_horn": {
+      "id": "white_bug_horn",
+      "tfsId": 0,
+      "name": "White Bug Horn",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "green_bull_tail": {
+      "id": "green_bull_tail",
+      "tfsId": 0,
+      "name": "Green Bull Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "shiny_magikarp_fin": {
+      "id": "shiny_magikarp_fin",
+      "tfsId": 0,
+      "name": "Shiny Magikarp Fin",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 29
+    },
+    "red_gyarados_tail": {
+      "id": "red_gyarados_tail",
+      "tfsId": 0,
+      "name": "Red Gyarados Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "purple_fin": {
+      "id": "purple_fin",
+      "tfsId": 0,
+      "name": "Purple Fin",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "mutant_gosme": {
+      "id": "mutant_gosme",
+      "tfsId": 0,
+      "name": "Mutant Gosme",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 29
+    },
+    "furry_pretty_tail": {
+      "id": "furry_pretty_tail",
+      "tfsId": 0,
+      "name": "Furry Pretty Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "aquatic_long_tail": {
+      "id": "aquatic_long_tail",
+      "tfsId": 0,
+      "name": "Aquatic Long Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "electric_yellow_collar": {
+      "id": "electric_yellow_collar",
+      "tfsId": 0,
+      "name": "Electric Yellow Collar",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "blaze_red_tail": {
+      "id": "blaze_red_tail",
+      "tfsId": 0,
+      "name": "Blaze Red Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "silver_helix_shell": {
+      "id": "silver_helix_shell",
+      "tfsId": 0,
+      "name": "Silver Helix Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "silver_spike_shell": {
+      "id": "silver_spike_shell",
+      "tfsId": 0,
+      "name": "Silver Spike Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "golden_dome_shell": {
+      "id": "golden_dome_shell",
+      "tfsId": 0,
+      "name": "Golden Dome Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "blood_scythe": {
+      "id": "blood_scythe",
+      "tfsId": 0,
+      "name": "Blood Scythe",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "sleepyhead_paw": {
+      "id": "sleepyhead_paw",
+      "tfsId": 0,
+      "name": "Sleepyhead Paw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "shiny_dragon_ears": {
+      "id": "shiny_dragon_ears",
+      "tfsId": 0,
+      "name": "Shiny Dragon Ears",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "yellow_dragon_tail": {
+      "id": "yellow_dragon_tail",
+      "tfsId": 0,
+      "name": "Yellow Dragon Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "golden_dragon_tail": {
+      "id": "golden_dragon_tail",
+      "tfsId": 0,
+      "name": "Golden Dragon Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "fire_stone": {
+      "id": "fire_stone",
+      "tfsId": 0,
+      "name": "Fire Stone",
+      "kind": "stone",
+      "stackable": true,
+      "sell": 250
+    },
+    "water_stone": {
+      "id": "water_stone",
+      "tfsId": 0,
+      "name": "Water Stone",
+      "kind": "stone",
+      "stackable": true,
+      "sell": 250
+    },
+    "ice_stone": {
+      "id": "ice_stone",
+      "tfsId": 0,
+      "name": "Ice Stone",
+      "kind": "stone",
+      "stackable": true,
+      "sell": 250
+    },
+    "rock_stone": {
+      "id": "rock_stone",
+      "tfsId": 0,
+      "name": "Rock Stone",
+      "kind": "stone",
+      "stackable": true,
+      "sell": 250
+    },
+    "ghost_stone": {
+      "id": "ghost_stone",
+      "tfsId": 0,
+      "name": "Ghost Stone",
+      "kind": "stone",
+      "stackable": true,
+      "sell": 250
+    },
+    "heart_stone": {
+      "id": "heart_stone",
+      "tfsId": 0,
+      "name": "Heart Stone",
+      "kind": "stone",
+      "sell": 250,
+      "stackable": true
+    },
+    "cocoon_stone": {
+      "id": "cocoon_stone",
+      "tfsId": 0,
+      "name": "Cocoon Stone",
+      "kind": "stone",
+      "sell": 250,
+      "stackable": true
+    },
+    "darkness_stone": {
+      "id": "darkness_stone",
+      "tfsId": 0,
+      "name": "Darkness Stone",
+      "kind": "stone",
+      "stackable": true,
+      "sell": 250
+    },
+    "leaf_stone": {
+      "id": "leaf_stone",
+      "tfsId": 0,
+      "name": "Leaf Stone",
+      "kind": "stone",
+      "stackable": true,
+      "sell": 250
+    },
+    "thunder_stone": {
+      "id": "thunder_stone",
+      "tfsId": 0,
+      "name": "Thunder Stone",
+      "kind": "stone",
+      "stackable": true,
+      "sell": 250
+    },
+    "venom_stone": {
+      "id": "venom_stone",
+      "tfsId": 0,
+      "name": "Venom Stone",
+      "kind": "stone",
+      "stackable": true,
+      "sell": 250
+    },
+    "feather_stone": {
+      "id": "feather_stone",
+      "tfsId": 0,
+      "name": "Feather Stone",
+      "kind": "stone",
+      "stackable": true,
+      "sell": 250
+    },
+    "earth_stone": {
+      "id": "earth_stone",
+      "tfsId": 0,
+      "name": "Earth Stone",
+      "kind": "stone",
+      "stackable": true,
+      "sell": 250
+    },
+    "fairy_stone": {
+      "id": "fairy_stone",
+      "tfsId": 0,
+      "name": "Fairy Stone",
+      "kind": "stone",
+      "stackable": true,
+      "sell": 250
+    },
+    "punch_stone": {
+      "id": "punch_stone",
+      "tfsId": 0,
+      "name": "Punch Stone",
+      "kind": "stone",
+      "stackable": true,
+      "sell": 250
+    },
+    "metal_stone": {
+      "id": "metal_stone",
+      "tfsId": 0,
+      "name": "Metal Stone",
+      "kind": "stone",
+      "stackable": true,
+      "sell": 250
+    },
+    "crystal_stone": {
+      "id": "crystal_stone",
+      "tfsId": 0,
+      "name": "Crystal Stone",
+      "kind": "stone",
+      "stackable": true,
+      "sell": 250
+    },
+    "enigma_stone": {
+      "id": "enigma_stone",
+      "tfsId": 0,
+      "name": "Enigma Stone",
+      "kind": "stone",
+      "stackable": true,
+      "sell": 250
+    },
+    "small_stone": {
+      "id": "small_stone",
+      "tfsId": 0,
+      "name": "Small Stone",
+      "kind": "stone",
+      "stackable": true,
+      "sell": 1
+    },
+    "solid_ice_cube": {
+      "id": "solid_ice_cube",
+      "tfsId": 0,
+      "name": "Solid Ice Cube",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "big_enchanted_gem": {
+      "id": "big_enchanted_gem",
+      "tfsId": 0,
+      "name": "Big Enchanted Gem",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "injection": {
+      "id": "injection",
+      "tfsId": 0,
+      "name": "Injection",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "compressed_steel": {
+      "id": "compressed_steel",
+      "tfsId": 0,
+      "name": "Compressed Steel",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "solid_dark_gem": {
+      "id": "solid_dark_gem",
+      "tfsId": 0,
+      "name": "Solid Dark Gem",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "dark_gem": {
+      "id": "dark_gem",
+      "tfsId": 0,
+      "name": "Dark Gem",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 6
+    },
+    "giant_dragon_scale": {
+      "id": "giant_dragon_scale",
+      "tfsId": 0,
+      "name": "Giant Dragon Scale",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "compressed_ghost_essence": {
+      "id": "compressed_ghost_essence",
+      "tfsId": 0,
+      "name": "Compressed Ghost Essence",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "solid_rubber_ball": {
+      "id": "solid_rubber_ball",
+      "tfsId": 0,
+      "name": "Solid Rubber Ball",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "solid_earth_piece": {
+      "id": "solid_earth_piece",
+      "tfsId": 0,
+      "name": "Solid Earth Piece",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "solid_water_gem": {
+      "id": "solid_water_gem",
+      "tfsId": 0,
+      "name": "Solid Water Gem",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "compressed_fire": {
+      "id": "compressed_fire",
+      "tfsId": 0,
+      "name": "Compressed Fire",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "pile_of_seeds": {
+      "id": "pile_of_seeds",
+      "tfsId": 0,
+      "name": "Pile Of Seeds",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "electric_sphere": {
+      "id": "electric_sphere",
+      "tfsId": 0,
+      "name": "Electric Sphere",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "big_poison_bottle": {
+      "id": "big_poison_bottle",
+      "tfsId": 0,
+      "name": "Big Poison Bottle",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "big_stone": {
+      "id": "big_stone",
+      "tfsId": 0,
+      "name": "Big Stone",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "compressed_straw": {
+      "id": "compressed_straw",
+      "tfsId": 0,
+      "name": "Compressed Straw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 357
+    },
+    "chicory": {
+      "id": "chicory",
+      "tfsId": 0,
+      "name": "Chicory",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 144
+    },
+    "purple_chicory": {
+      "id": "purple_chicory",
+      "tfsId": 0,
+      "name": "Purple Chicory",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "big_leaf": {
+      "id": "big_leaf",
+      "tfsId": 0,
+      "name": "Big Leaf",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 378
+    },
+    "purple_big_leaf": {
+      "id": "purple_big_leaf",
+      "tfsId": 0,
+      "name": "Purple Big Leaf",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "big_petal": {
+      "id": "big_petal",
+      "tfsId": 0,
+      "name": "Big Petal",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 633
+    },
+    "purple_petal": {
+      "id": "purple_petal",
+      "tfsId": 0,
+      "name": "Purple Petal",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "cyndaquil_nose": {
+      "id": "cyndaquil_nose",
+      "tfsId": 0,
+      "name": "Cyndaquil Nose",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 144
+    },
+    "red_nose": {
+      "id": "red_nose",
+      "tfsId": 0,
+      "name": "Red Nose",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "quilava_fur": {
+      "id": "quilava_fur",
+      "tfsId": 0,
+      "name": "Quilava Fur",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 378
+    },
+    "blaze_fur": {
+      "id": "blaze_fur",
+      "tfsId": 0,
+      "name": "Blaze Fur",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "typhlosion_fur": {
+      "id": "typhlosion_fur",
+      "tfsId": 0,
+      "name": "Typhlosion Fur",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 633
+    },
+    "volcano_fur": {
+      "id": "volcano_fur",
+      "tfsId": 0,
+      "name": "Volcano Fur",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "totodile_tail": {
+      "id": "totodile_tail",
+      "tfsId": 0,
+      "name": "Totodile Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 144
+    },
+    "cyan_tail": {
+      "id": "cyan_tail",
+      "tfsId": 0,
+      "name": "Cyan Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "crocodile_hair": {
+      "id": "crocodile_hair",
+      "tfsId": 0,
+      "name": "Crocodile Hair",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 378
+    },
+    "blue_mohawk": {
+      "id": "blue_mohawk",
+      "tfsId": 0,
+      "name": "Blue Mohawk",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "red_hair": {
+      "id": "red_hair",
+      "tfsId": 0,
+      "name": "Red Hair",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 633
+    },
+    "big_blue_mohawk": {
+      "id": "big_blue_mohawk",
+      "tfsId": 0,
+      "name": "Big Blue Mohawk",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "yellow_furry_tail": {
+      "id": "yellow_furry_tail",
+      "tfsId": 0,
+      "name": "Yellow Furry Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "furret_tail": {
+      "id": "furret_tail",
+      "tfsId": 0,
+      "name": "Furret Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 321
+    },
+    "pink_tail": {
+      "id": "pink_tail",
+      "tfsId": 0,
+      "name": "Pink Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "owl_antennas": {
+      "id": "owl_antennas",
+      "tfsId": 0,
+      "name": "Owl Antennas",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 122
+    },
+    "shinning_antennas": {
+      "id": "shinning_antennas",
+      "tfsId": 0,
+      "name": "Shinning Antennas",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "owl_crest": {
+      "id": "owl_crest",
+      "tfsId": 0,
+      "name": "Owl Crest",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 443
+    },
+    "yellow_crest": {
+      "id": "yellow_crest",
+      "tfsId": 0,
+      "name": "Yellow Crest",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "ladybug_wings": {
+      "id": "ladybug_wings",
+      "tfsId": 0,
+      "name": "Ladybug Wings",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 76
+    },
+    "blue_ladybug_wings": {
+      "id": "blue_ladybug_wings",
+      "tfsId": 0,
+      "name": "Blue Ladybug Wings",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "ledian_wings": {
+      "id": "ledian_wings",
+      "tfsId": 0,
+      "name": "Ledian Wings",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 312
+    },
+    "blue_bug_wings": {
+      "id": "blue_bug_wings",
+      "tfsId": 0,
+      "name": "Blue Bug Wings",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "spider_legs": {
+      "id": "spider_legs",
+      "tfsId": 0,
+      "name": "Spider Legs",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 76
+    },
+    "blue_spider_legs": {
+      "id": "blue_spider_legs",
+      "tfsId": 0,
+      "name": "Blue Spider Legs",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "arachnid_legs": {
+      "id": "arachnid_legs",
+      "tfsId": 0,
+      "name": "Arachnid Legs",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 312
+    },
+    "poisoned_arachnid_legs": {
+      "id": "poisoned_arachnid_legs",
+      "tfsId": 0,
+      "name": "Poisoned Arachnid Legs",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "giant_bat_wing": {
+      "id": "giant_bat_wing",
+      "tfsId": 0,
+      "name": "Giant Bat Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 619
+    },
+    "shiny_bat_wing": {
+      "id": "shiny_bat_wing",
+      "tfsId": 0,
+      "name": "Shiny Bat Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "teardrop_orb": {
+      "id": "teardrop_orb",
+      "tfsId": 0,
+      "name": "Teardrop Orb",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 76
+    },
+    "brilliant_teardrop_orb": {
+      "id": "brilliant_teardrop_orb",
+      "tfsId": 0,
+      "name": "Brilliant Teardrop Orb",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "electric_fish_tail": {
+      "id": "electric_fish_tail",
+      "tfsId": 0,
+      "name": "Electric Fish Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 619
+    },
+    "purple_fish_tail": {
+      "id": "purple_fish_tail",
+      "tfsId": 0,
+      "name": "Purple Fish Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "pichu_ears": {
+      "id": "pichu_ears",
+      "tfsId": 0,
+      "name": "Pichu Ears",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 144
+    },
+    "tanned_ears": {
+      "id": "tanned_ears",
+      "tfsId": 0,
+      "name": "Tanned Ears",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "small_pink_ears": {
+      "id": "small_pink_ears",
+      "tfsId": 0,
+      "name": "Small Pink Ears",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 162
+    },
+    "small_blue_ears": {
+      "id": "small_blue_ears",
+      "tfsId": 0,
+      "name": "Small Blue Ears",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "small_topknot": {
+      "id": "small_topknot",
+      "tfsId": 0,
+      "name": "Small Topknot",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 162
+    },
+    "magenta_topknot": {
+      "id": "magenta_topknot",
+      "tfsId": 0,
+      "name": "Magenta Topknot",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 72
+    },
+    "baby_egg_shell": {
+      "id": "baby_egg_shell",
+      "tfsId": 0,
+      "name": "Baby Egg Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 106
+    },
+    "brilliant_egg_shell": {
+      "id": "brilliant_egg_shell",
+      "tfsId": 0,
+      "name": "Brilliant Egg Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "dainty_wing": {
+      "id": "dainty_wing",
+      "tfsId": 0,
+      "name": "Dainty Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 747
+    },
+    "pink_dainty_wing": {
+      "id": "pink_dainty_wing",
+      "tfsId": 0,
+      "name": "Pink Dainty Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "natu_wing": {
+      "id": "natu_wing",
+      "tfsId": 0,
+      "name": "Natu Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 276
+    },
+    "small_psychic_wing": {
+      "id": "small_psychic_wing",
+      "tfsId": 0,
+      "name": "Small Psychic Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "xatu_wing": {
+      "id": "xatu_wing",
+      "tfsId": 0,
+      "name": "Xatu Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 619
+    },
+    "psychic_wings": {
+      "id": "psychic_wings",
+      "tfsId": 0,
+      "name": "Psychic Wings",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "yellow_sheep_wool": {
+      "id": "yellow_sheep_wool",
+      "tfsId": 0,
+      "name": "Yellow Sheep Wool",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 144
+    },
+    "white_sheep_wool": {
+      "id": "white_sheep_wool",
+      "tfsId": 0,
+      "name": "White Sheep Wool",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "soft_wool": {
+      "id": "soft_wool",
+      "tfsId": 0,
+      "name": "Soft Wool",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 378
+    },
+    "electric_soft_wool": {
+      "id": "electric_soft_wool",
+      "tfsId": 0,
+      "name": "Electric Soft Wool",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "electric_sheep_tail": {
+      "id": "electric_sheep_tail",
+      "tfsId": 0,
+      "name": "Electric Sheep Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 633
+    },
+    "green_sheep_tail": {
+      "id": "green_sheep_tail",
+      "tfsId": 0,
+      "name": "Green Sheep Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "small_red_flower": {
+      "id": "small_red_flower",
+      "tfsId": 0,
+      "name": "Small Red Flower",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 429
+    },
+    "small_purple_flower": {
+      "id": "small_purple_flower",
+      "tfsId": 0,
+      "name": "Small Purple Flower",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "yellow_aquactic_tail": {
+      "id": "yellow_aquactic_tail",
+      "tfsId": 0,
+      "name": "Yellow Aquactic Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "cute_ears": {
+      "id": "cute_ears",
+      "tfsId": 0,
+      "name": "Cute Ears",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 747
+    },
+    "yellow_cute_ears": {
+      "id": "yellow_cute_ears",
+      "tfsId": 0,
+      "name": "Yellow Cute Ears",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "branch_of_stones": {
+      "id": "branch_of_stones",
+      "tfsId": 0,
+      "name": "Branch of Stones",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 899
+    },
+    "golden_nuggets": {
+      "id": "golden_nuggets",
+      "tfsId": 0,
+      "name": "Golden Nuggets",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "frog_topknot": {
+      "id": "frog_topknot",
+      "tfsId": 0,
+      "name": "Frog Topknot",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 492
+    },
+    "cyan_frog_topknot": {
+      "id": "cyan_frog_topknot",
+      "tfsId": 0,
+      "name": "Cyan Frog Topknot",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "pointy_leaf": {
+      "id": "pointy_leaf",
+      "tfsId": 0,
+      "name": "Pointy Leaf",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 106
+    },
+    "cyan_pointy_leaf": {
+      "id": "cyan_pointy_leaf",
+      "tfsId": 0,
+      "name": "Cyan Pointy Leaf",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "yellow_flower": {
+      "id": "yellow_flower",
+      "tfsId": 0,
+      "name": "Yellow Flower",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 158
+    },
+    "green_flower": {
+      "id": "green_flower",
+      "tfsId": 0,
+      "name": "Green Flower",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "dandelion": {
+      "id": "dandelion",
+      "tfsId": 0,
+      "name": "Dandelion",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 361
+    },
+    "white_dandelion": {
+      "id": "white_dandelion",
+      "tfsId": 0,
+      "name": "White Dandelion",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "aipom_paw": {
+      "id": "aipom_paw",
+      "tfsId": 0,
+      "name": "Aipom Paw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 420
+    },
+    "blue_aipom_paw": {
+      "id": "blue_aipom_paw",
+      "tfsId": 0,
+      "name": "Blue Aipom Paw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "sun_leaves": {
+      "id": "sun_leaves",
+      "tfsId": 0,
+      "name": "Sun Leaves",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 122
+    },
+    "sunflower": {
+      "id": "sunflower",
+      "tfsId": 0,
+      "name": "Sunflower",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 315
+    },
+    "brown_sunflower": {
+      "id": "brown_sunflower",
+      "tfsId": 0,
+      "name": "Brown Sunflower",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "mosquito_tail": {
+      "id": "mosquito_tail",
+      "tfsId": 0,
+      "name": "Mosquito Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 315
+    },
+    "blue_mosquito_tail": {
+      "id": "blue_mosquito_tail",
+      "tfsId": 0,
+      "name": "Blue Mosquito Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "magenta_gill": {
+      "id": "magenta_gill",
+      "tfsId": 0,
+      "name": "Magenta Gill",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 144
+    },
+    "pink_gill": {
+      "id": "pink_gill",
+      "tfsId": 0,
+      "name": "Pink Gill",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "amphibian_tail": {
+      "id": "amphibian_tail",
+      "tfsId": 0,
+      "name": "Amphibian Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 443
+    },
+    "mud_tail": {
+      "id": "mud_tail",
+      "tfsId": 0,
+      "name": "Mud Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "psychic_ears": {
+      "id": "psychic_ears",
+      "tfsId": 0,
+      "name": "Psychic Ears",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 758
+    },
+    "sunlight_ears": {
+      "id": "sunlight_ears",
+      "tfsId": 0,
+      "name": "Sunlight Ears",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "dark_ears": {
+      "id": "dark_ears",
+      "tfsId": 0,
+      "name": "Dark Ears",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 758
+    },
+    "moonlight_ears": {
+      "id": "moonlight_ears",
+      "tfsId": 0,
+      "name": "Moonlight Ears",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "yellow_beak": {
+      "id": "yellow_beak",
+      "tfsId": 0,
+      "name": "Yellow Beak",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 420
+    },
+    "dark_beak": {
+      "id": "dark_beak",
+      "tfsId": 0,
+      "name": "Dark Beak",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "slowking_necklace": {
+      "id": "slowking_necklace",
+      "tfsId": 0,
+      "name": "Slowking Necklace",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 162
+    },
+    "mysterious_necklace": {
+      "id": "mysterious_necklace",
+      "tfsId": 0,
+      "name": "Mysterious Necklace",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "miss_traces": {
+      "id": "miss_traces",
+      "tfsId": 0,
+      "name": "Miss Traces",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 756
+    },
+    "terrifying_traces": {
+      "id": "terrifying_traces",
+      "tfsId": 0,
+      "name": "Terrifying Traces",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "alphabetic_eye": {
+      "id": "alphabetic_eye",
+      "tfsId": 0,
+      "name": "Alphabetic Eye",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 46
+    },
+    "blue_alphabetic_eye": {
+      "id": "blue_alphabetic_eye",
+      "tfsId": 0,
+      "name": "Blue Alphabetic Eye",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "two_eyed_black_tail": {
+      "id": "two_eyed_black_tail",
+      "tfsId": 0,
+      "name": "Two-Eyed Black Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 551
+    },
+    "two_eyed_shiny_tail": {
+      "id": "two_eyed_shiny_tail",
+      "tfsId": 0,
+      "name": "Two-Eyed Shiny Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "giraffe_antenna": {
+      "id": "giraffe_antenna",
+      "tfsId": 0,
+      "name": "Giraffe Antenna",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 619
+    },
+    "orange_giraffe_antennas": {
+      "id": "orange_giraffe_antennas",
+      "tfsId": 0,
+      "name": "Orange Giraffe Antennas",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "pineco_shell": {
+      "id": "pineco_shell",
+      "tfsId": 0,
+      "name": "Pineco Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 86
+    },
+    "orange_shell": {
+      "id": "orange_shell",
+      "tfsId": 0,
+      "name": "Orange Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "forretress_shell": {
+      "id": "forretress_shell",
+      "tfsId": 0,
+      "name": "Forretress Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 747
+    },
+    "brown_shell": {
+      "id": "brown_shell",
+      "tfsId": 0,
+      "name": "Brown Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "dunsparce_wings": {
+      "id": "dunsparce_wings",
+      "tfsId": 0,
+      "name": "Dunsparce Wings",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 239
+    },
+    "dunsparce_gold_wings": {
+      "id": "dunsparce_gold_wings",
+      "tfsId": 0,
+      "name": "Dunsparce Gold Wings",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "bat_claw": {
+      "id": "bat_claw",
+      "tfsId": 0,
+      "name": "Bat Claw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 369
+    },
+    "black_bat_claw": {
+      "id": "black_bat_claw",
+      "tfsId": 0,
+      "name": "Black Bat Claw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "steelix_tail": {
+      "id": "steelix_tail",
+      "tfsId": 0,
+      "name": "Steelix Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 530
+    },
+    "golden_steelix_tail": {
+      "id": "golden_steelix_tail",
+      "tfsId": 0,
+      "name": "Golden Steelix Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "snubbull_ear": {
+      "id": "snubbull_ear",
+      "tfsId": 0,
+      "name": "Snubbull Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 276
+    },
+    "punk_ear": {
+      "id": "punk_ear",
+      "tfsId": 0,
+      "name": "Punk Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "granbull_ear": {
+      "id": "granbull_ear",
+      "tfsId": 0,
+      "name": "Granbull Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 758
+    },
+    "brown_ear": {
+      "id": "brown_ear",
+      "tfsId": 0,
+      "name": "Brown Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "puffer_tail": {
+      "id": "puffer_tail",
+      "tfsId": 0,
+      "name": "Puffer Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 361
+    },
+    "poisoned_fish_tail": {
+      "id": "poisoned_fish_tail",
+      "tfsId": 0,
+      "name": "Poisoned Fish Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "scizor_claw": {
+      "id": "scizor_claw",
+      "tfsId": 0,
+      "name": "Scizor Claw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 627
+    },
+    "carbon_claw": {
+      "id": "carbon_claw",
+      "tfsId": 0,
+      "name": "Carbon Claw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "shuckle_shell": {
+      "id": "shuckle_shell",
+      "tfsId": 0,
+      "name": "Shuckle Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 390
+    },
+    "blue_shuckle_shell": {
+      "id": "blue_shuckle_shell",
+      "tfsId": 0,
+      "name": "Blue Shuckle Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "bug_horn": {
+      "id": "bug_horn",
+      "tfsId": 0,
+      "name": "Bug Horn",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 739
+    },
+    "pink_bug_horn": {
+      "id": "pink_bug_horn",
+      "tfsId": 0,
+      "name": "Pink Bug Horn",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "sneasel_feather": {
+      "id": "sneasel_feather",
+      "tfsId": 0,
+      "name": "Sneasel Feather",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 361
+    },
+    "cyan_feather": {
+      "id": "cyan_feather",
+      "tfsId": 0,
+      "name": "Cyan Feather",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "moon_pendant": {
+      "id": "moon_pendant",
+      "tfsId": 0,
+      "name": "Moon Pendant",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 239
+    },
+    "shining_moon_pendant": {
+      "id": "shining_moon_pendant",
+      "tfsId": 0,
+      "name": "Shining Moon Pendant",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "bear_claw": {
+      "id": "bear_claw",
+      "tfsId": 0,
+      "name": "Bear Claw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 661
+    },
+    "black_bear_claw": {
+      "id": "black_bear_claw",
+      "tfsId": 0,
+      "name": "Black Bear Claw",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "magma_ears": {
+      "id": "magma_ears",
+      "tfsId": 0,
+      "name": "Magma Ears",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 76
+    },
+    "yellow_magma_ears": {
+      "id": "yellow_magma_ears",
+      "tfsId": 0,
+      "name": "Yellow Magma Ears",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "magma_shell": {
+      "id": "magma_shell",
+      "tfsId": 0,
+      "name": "Magma Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 699
+    },
+    "blue_magma_shell": {
+      "id": "blue_magma_shell",
+      "tfsId": 0,
+      "name": "Blue Magma Shell",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "furry_hair": {
+      "id": "furry_hair",
+      "tfsId": 0,
+      "name": "Furry Hair",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 76
+    },
+    "gray_furry_hair": {
+      "id": "gray_furry_hair",
+      "tfsId": 0,
+      "name": "Gray Furry Hair",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "ice_tusks": {
+      "id": "ice_tusks",
+      "tfsId": 0,
+      "name": "Ice Tusks",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 619
+    },
+    "frozen_tusks": {
+      "id": "frozen_tusks",
+      "tfsId": 0,
+      "name": "Frozen Tusks",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "piece_of_corsola": {
+      "id": "piece_of_corsola",
+      "tfsId": 0,
+      "name": "Piece of Corsola",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 443
+    },
+    "blue_piece_of_corsola": {
+      "id": "blue_piece_of_corsola",
+      "tfsId": 0,
+      "name": "Blue Piece of Corsola",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "small_blue_fin": {
+      "id": "small_blue_fin",
+      "tfsId": 0,
+      "name": "Small Blue Fin",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 76
+    },
+    "small_green_fin": {
+      "id": "small_green_fin",
+      "tfsId": 0,
+      "name": "Small Green Fin",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "red_tentacle": {
+      "id": "red_tentacle",
+      "tfsId": 0,
+      "name": "Red Tentacle",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 496
+    },
+    "yellow_tentacle": {
+      "id": "yellow_tentacle",
+      "tfsId": 0,
+      "name": "Yellow Tentacle",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "gift_tail": {
+      "id": "gift_tail",
+      "tfsId": 0,
+      "name": "Gift Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 361
+    },
+    "rainbow_gift_tail": {
+      "id": "rainbow_gift_tail",
+      "tfsId": 0,
+      "name": "Rainbow Gift Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "blue_ray_tail": {
+      "id": "blue_ray_tail",
+      "tfsId": 0,
+      "name": "Blue Ray Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 739
+    },
+    "cyan_ray_tail": {
+      "id": "cyan_ray_tail",
+      "tfsId": 0,
+      "name": "Cyan Ray Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "steel_wing": {
+      "id": "steel_wing",
+      "tfsId": 0,
+      "name": "Steel Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 644
+    },
+    "yellow_steel_wing": {
+      "id": "yellow_steel_wing",
+      "tfsId": 0,
+      "name": "Yellow Steel Wing",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "back_bone": {
+      "id": "back_bone",
+      "tfsId": 0,
+      "name": "Back Bone",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 144
+    },
+    "smoked_bones": {
+      "id": "smoked_bones",
+      "tfsId": 0,
+      "name": "Smoked Bones",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "dark_canine_horns": {
+      "id": "dark_canine_horns",
+      "tfsId": 0,
+      "name": "Dark Canine Horns",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 644
+    },
+    "hellhound_horns": {
+      "id": "hellhound_horns",
+      "tfsId": 0,
+      "name": "Hellhound Horns",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "sea_dragon_fin": {
+      "id": "sea_dragon_fin",
+      "tfsId": 0,
+      "name": "Sea Dragon Fin",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 644
+    },
+    "white_dragon_fin": {
+      "id": "white_dragon_fin",
+      "tfsId": 0,
+      "name": "White Dragon Fin",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "small_elephant_ear": {
+      "id": "small_elephant_ear",
+      "tfsId": 0,
+      "name": "Small Elephant Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 144
+    },
+    "green_elephant_ear": {
+      "id": "green_elephant_ear",
+      "tfsId": 0,
+      "name": "Green Elephant Ear",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "elephant_foot": {
+      "id": "elephant_foot",
+      "tfsId": 0,
+      "name": "Elephant Foot",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 633
+    },
+    "orange_elephant_foot": {
+      "id": "orange_elephant_foot",
+      "tfsId": 0,
+      "name": "Orange Elephant Foot",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "dimensional_cube": {
+      "id": "dimensional_cube",
+      "tfsId": 0,
+      "name": "Dimensional Cube",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 633
+    },
+    "purple_dimensional_cube": {
+      "id": "purple_dimensional_cube",
+      "tfsId": 0,
+      "name": "Purple Dimensional Cube",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "reindeer_horns": {
+      "id": "reindeer_horns",
+      "tfsId": 0,
+      "name": "Reindeer Horns",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 371
+    },
+    "illusion_horns": {
+      "id": "illusion_horns",
+      "tfsId": 0,
+      "name": "Illusion Horns",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    },
+    "smeargle_tail": {
+      "id": "smeargle_tail",
+      "tfsId": 0,
+      "name": "Smeargle Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 211
+    },
+    "fist_bandages": {
+      "id": "fist_bandages",
+      "tfsId": 0,
+      "name": "Fist Bandages",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 304
+    },
+    "white_bandages": {
+      "id": "white_bandages",
+      "tfsId": 0,
+      "name": "White Bandages",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "martial_arts_tail": {
+      "id": "martial_arts_tail",
+      "tfsId": 0,
+      "name": "Martial Arts Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 448
+    },
+    "capoeira_tail": {
+      "id": "capoeira_tail",
+      "tfsId": 0,
+      "name": "Capoeira Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "baby_hair": {
+      "id": "baby_hair",
+      "tfsId": 0,
+      "name": "Baby Hair",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 276
+    },
+    "light_baby_hair": {
+      "id": "light_baby_hair",
+      "tfsId": 0,
+      "name": "Light Baby Hair",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "plug_ears": {
+      "id": "plug_ears",
+      "tfsId": 0,
+      "name": "Plug Ears",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 276
+    },
+    "white_plug_ears": {
+      "id": "white_plug_ears",
+      "tfsId": 0,
+      "name": "White Plug Ears",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "magma_topknot": {
+      "id": "magma_topknot",
+      "tfsId": 0,
+      "name": "Magma Topknot",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 276
+    },
+    "crimson_topknot": {
+      "id": "crimson_topknot",
+      "tfsId": 0,
+      "name": "Crimson Topknot",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "cow_tail": {
+      "id": "cow_tail",
+      "tfsId": 0,
+      "name": "Cow Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 758
+    },
+    "blue_cow_tail": {
+      "id": "blue_cow_tail",
+      "tfsId": 0,
+      "name": "Blue Cow Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "nurses_fur": {
+      "id": "nurses_fur",
+      "tfsId": 0,
+      "name": "Nurse's Fur",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 661
+    },
+    "purple_nurses_fur": {
+      "id": "purple_nurses_fur",
+      "tfsId": 0,
+      "name": "Purple Nurse's Fur",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "larvitar_tail": {
+      "id": "larvitar_tail",
+      "tfsId": 0,
+      "name": "Larvitar Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 283
+    },
+    "yellow_larvitar_tail": {
+      "id": "yellow_larvitar_tail",
+      "tfsId": 0,
+      "name": "Yellow Larvitar Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "rock_plate": {
+      "id": "rock_plate",
+      "tfsId": 0,
+      "name": "Rock Plate",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 481
+    },
+    "purple_rock_plate": {
+      "id": "purple_rock_plate",
+      "tfsId": 0,
+      "name": "Purple Rock Plate",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "tyranitar_tail": {
+      "id": "tyranitar_tail",
+      "tfsId": 0,
+      "name": "Tyranitar Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 692
+    },
+    "godzilla_tail": {
+      "id": "godzilla_tail",
+      "tfsId": 0,
+      "name": "Godzilla Tail",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "sun_stone": {
+      "id": "sun_stone",
+      "tfsId": 0,
+      "name": "Sun Stone",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "kings_rock": {
+      "id": "kings_rock",
+      "tfsId": 0,
+      "name": "King's Rock",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 143
+    },
+    "metal_coat": {
+      "id": "metal_coat",
+      "tfsId": 0,
+      "name": "Metal Coat",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 534
+    },
+    "macho_brace": {
+      "id": "macho_brace",
+      "tfsId": 0,
+      "name": "Macho Brace",
+      "kind": "loot",
+      "stackable": true,
+      "sell": 215
+    }
+  }
+}
