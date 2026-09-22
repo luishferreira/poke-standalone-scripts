@@ -26,6 +26,11 @@ module.exports = {
       shared: ['src/shared/ws-bridge.js', 'src/shared/ui-menu.js'],
     },
     {
+      input: 'src/auto-pokedex.js',
+      output: 'auto-pokedex.user.js',
+      shared: ['src/shared/ws-bridge.js', 'src/shared/ui-menu.js'],
+    },
+    {
       input: 'src/pokedream-auto-refill.js',
       output: 'pokedream-auto-refill.user.js',
     },

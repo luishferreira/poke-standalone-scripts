@@ -69,6 +69,17 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 - Configuração fica em `piw-auto-refill-settings-v1`; API pública fica em `window.piwAutoRefill`.
 - Registra o botão no `window.piwScripts.uiMenu`; não injeta mais controles em `nav.game-dock`.
 
+### `auto-pokedex.user.js`
+
+- Userscript próprio, executado em `document-start` e sempre iniciado pausado após reload.
+- Sua única responsabilidade é escolher e alternar hunts diretas para completar a Pokédex. Nunca envia `catch`, escolhe balls, cura Pokémon ou interfere no Auto Catch.
+- O universo vem de `/game/creatures.json` combinado com `/api/game/map-markers`; espécies sem hunt direta são ignoradas e markers acima do nível de `/api/characters/me` ficam bloqueados.
+- Ordena espécies acessíveis pelo valor de venda ao NPC (`sellValue > 0`, com fallback para `priceNpc`), depois por nível da hunt e ID. Hunts compartilhadas permanecem ativas até que todas as espécies pendentes daquele slug sejam capturadas.
+- `/api/game/pokedex` é uma resposta esparsa: presença com `caught: true` confirma captura; ausência não significa espécie inválida. Após sinal de captura, releia a Pokédex antes de avançar.
+- Ao concluir, permanece na última hunt. Pausar ou desinstalar também não envia `leave-hunt`.
+- O VIP é apenas informativo na interface; sua ausência não bloqueia a automação.
+- API pública fica em `window.piwAutoPokedex`; registra seu botão no `window.piwScripts.uiMenu`.
+
 ### `pokedream-auto-refill.user.js`
 
 - Userscript próprio para PokeDream, executado em `document-end` e instalado pausado por padrão.
@@ -97,7 +108,7 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 
 ## Conflitos e coexistência
 
-Os quatro scripts próprios do Poke Idle World podem rodar na mesma página e o usuário também instala o PIW-QOL original. Trate coexistência com essa referência externa como requisito, não como acaso.
+Os cinco scripts próprios do Poke Idle World podem rodar na mesma página e o usuário também instala o PIW-QOL original. Trate coexistência com essa referência externa como requisito, não como acaso.
 
 ### Deve existir um único responsável por cada automação
 
@@ -108,7 +119,7 @@ Os quatro scripts próprios do Poke Idle World podem rodar na mesma página e o 
 
 ### Interceptação do WebSocket deve ser cooperativa
 
-- O PIW-QOL ainda mantém hooks próprios no WebSocket; a ordem de carregamento do Tampermonkey pode mudar o encadeamento. Os quatro scripts próprios do Poke Idle World usam exclusivamente o bridge.
+- O PIW-QOL ainda mantém hooks próprios no WebSocket; a ordem de carregamento do Tampermonkey pode mudar o encadeamento. Os cinco scripts próprios do Poke Idle World usam exclusivamente o bridge.
 - Ao manter os arquivos atuais, capture a implementação anterior, encaminhe com o mesmo `this` e `arguments`, e nunca engula um envio do jogo sem decisão explícita da feature.
 - Não faça `WebSocket.prototype.send = originalSend` no uninstall se outro script instalou um wrapper depois do seu. Só restaure quando o valor atual ainda for exatamente o wrapper daquele módulo.
 - Não use uma variável global genérica nova como `window.myGameSocket`. Use namespace do projeto, por exemplo `window.piwScripts`, e mantenha aliases legados apenas para compatibilidade documentada.
@@ -125,9 +136,9 @@ Os quatro scripts próprios do Poke Idle World podem rodar na mesma página e o 
 - deduplicar listeners;
 - permitir cleanup por feature.
 
-O bridge por si só é passivo: instalar não abre conexão nem envia mensagens. Ele encadeia o construtor e o `send` encontrados, aceita wrapper externo antes ou depois, isola erros de subscribers e ignora mensagens do socket substituído. Atualmente é incorporado aos quatro userscripts do Poke Idle World; todos usam `subscribe` para lifecycle/mensagens e `sendJson` para seus envios, sem hooks próprios. Uma feature nunca deve chamar `bridge.uninstall()`; seu cleanup remove somente o próprio subscriber.
+O bridge por si só é passivo: instalar não abre conexão nem envia mensagens. Ele encadeia o construtor e o `send` encontrados, aceita wrapper externo antes ou depois, isola erros de subscribers e ignora mensagens do socket substituído. Atualmente é incorporado aos cinco userscripts do Poke Idle World; todos usam `subscribe` para lifecycle/mensagens e `sendJson` para seus envios, sem hooks próprios. Uma feature nunca deve chamar `bridge.uninstall()`; seu cleanup remove somente o próprio subscriber.
 
-`src/shared/ui-menu.js` implementa `window.piwScripts.uiMenu` v1. Os quatro scripts registram seus botões nele e removem somente o próprio registro no uninstall. O módulo reutiliza o `#script-sidebar` do PIW-QOL quando presente e cria uma sidebar equivalente quando ausente; essa coexistência é apenas pelo contêiner DOM, sem chamar funções internas nem acessar configurações do QOL. A ordem de carregamento deve funcionar nos dois sentidos.
+`src/shared/ui-menu.js` implementa `window.piwScripts.uiMenu` v1. Os cinco scripts registram seus botões nele e removem somente o próprio registro no uninstall. O módulo reutiliza o `#script-sidebar` do PIW-QOL quando presente e cria uma sidebar equivalente quando ausente; essa coexistência é apenas pelo contêiner DOM, sem chamar funções internas nem acessar configurações do QOL. A ordem de carregamento deve funcionar nos dois sentidos.
 
 ## Estado e persistência no navegador
 
@@ -191,7 +202,7 @@ Eventos frequentes como `pending`, `field`, `field-kill` e `poke-xp` servem para
 
 ## Build e estrutura do projeto
 
-Os arquivos canônicos ficam em `src`; os cinco `.user.js` da raiz são artefatos gerados e instaláveis:
+Os arquivos canônicos ficam em `src`; os seis `.user.js` da raiz são artefatos gerados e instaláveis:
 
 ```text
 src/
@@ -200,6 +211,7 @@ src/
   auto-reconnect.js
   auto-boss.js
   auto-refill.js
+  auto-pokedex.js
   pokedream-auto-refill.js
 scripts/
   userscripts.config.js
@@ -208,6 +220,7 @@ auto-catch.user.js        # gerado
 auto-reconnect.user.js    # gerado
 auto-boss.user.js         # gerado
 auto-refill.user.js       # gerado
+auto-pokedex.user.js      # gerado
 pokedream-auto-refill.user.js # gerado
 test/
 ```
@@ -215,9 +228,9 @@ test/
 Regras do build:
 
 - Edite somente a fonte correspondente em `src` e incremente ali o `@version`; nunca corrija diretamente um `.user.js` gerado.
-- Execute `npm run build` para regenerar os cinco artefatos. O output é determinístico e não contém timestamp.
+- Execute `npm run build` para regenerar os seis artefatos. O output é determinístico e não contém timestamp.
 - `npm run build:check` não escreve arquivos e falha quando um artefato está ausente ou difere da fonte.
-- Módulos da lista global `shared` são incorporados antes de todas as features; cada entrada também pode declarar sua própria lista para rollout gradual. `ws-bridge.js` e `ui-menu.js` estão nas entradas dos quatro userscripts do Poke Idle World.
+- Módulos da lista global `shared` são incorporados antes de todas as features; cada entrada também pode declarar sua própria lista para rollout gradual. `ws-bridge.js` e `ui-menu.js` estão nas entradas dos cinco userscripts do Poke Idle World.
 - O arquivo entregue ao Tampermonkey deve continuar sendo um único userscript autocontido; não introduza `@require` nem outro userscript obrigatório.
 - O bloco `// ==UserScript==` deve ser o primeiro conteúdo do artefato e preservar `@name`, `@namespace`, `@match`, `@grant` e `@run-at` corretos.
 - Não introduza framework/bundler pesado sem necessidade. O build atual usa somente módulos nativos do Node.js.
