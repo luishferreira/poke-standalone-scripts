@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Auto Pokédex
 // @namespace    poke-manager
-// @version      1.0.0
+// @version      1.1.1
 // @description  Percorre automaticamente as hunts acessíveis até completar as capturas pendentes da Pokédex.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -36,7 +36,11 @@
   const POKEDEX_URL = '/api/game/pokedex';
   const CHARACTER_URL = '/api/characters/me';
   const AUTH_REFRESH_URL = '/api/auth/refresh';
-  const TRANSITION_DELAY_MS = 1_000;
+  const MAP_OPEN_TIMEOUT_MS = 1_500;
+  const MARKER_SEARCH_TIMEOUT_MS = 1_500;
+  const HUNT_ENTRY_TIMEOUT_MS = 4_000;
+  const DOM_RETRY_MS = 100;
+  const AREA_CHANGE_DELAY_MS = 250;
   const VERIFY_RETRY_MS = 2_500;
   const VERIFY_RETRIES = 4;
   const MAX_HISTORY = 10;
@@ -81,6 +85,8 @@
     history: [],
     generation: 0,
     transitionTimer: null,
+    transitionResolve: null,
+    huntEntryWaiter: null,
     verifyTimer: null,
     verifyPromise: null,
     verifyQueued: false,
@@ -89,9 +95,9 @@
   let unsubscribeBridge = null;
   let unregisterMenu = null;
   let interfaceObserver = null;
+  let disposePanelDrag = null;
   let observerTimer = null;
   let uiTimer = null;
-  let internalSendDepth = 0;
 
   function normalizeName(value) {
     return String(value || '')
@@ -322,22 +328,110 @@
     buildPlan();
   }
 
-  function sendWs(payload) {
-    state.socket = bridge.getSocket();
-    if (!state.socket || state.socket.readyState !== WebSocket.OPEN) return false;
-    internalSendDepth += 1;
-    try {
-      return bridge.sendJson(payload);
-    } finally {
-      internalSendDepth -= 1;
-    }
+  function resolveHuntEntry(confirmed) {
+    const waiter = state.huntEntryWaiter;
+    if (!waiter) return;
+    clearTimeout(waiter.timer);
+    state.huntEntryWaiter = null;
+    waiter.resolve(Boolean(confirmed));
   }
 
   function clearTransition() {
     state.generation += 1;
     if (state.transitionTimer) clearTimeout(state.transitionTimer);
     state.transitionTimer = null;
+    state.transitionResolve?.(false);
+    state.transitionResolve = null;
+    resolveHuntEntry(false);
     state.transitioning = false;
+  }
+
+  function waitDuringTransition(delayMs, generation) {
+    return new Promise((resolve) => {
+      state.transitionResolve = resolve;
+      state.transitionTimer = setTimeout(() => {
+        state.transitionTimer = null;
+        state.transitionResolve = null;
+        resolve(state.running && generation === state.generation);
+      }, delayMs);
+    });
+  }
+
+  async function waitForDom(find, timeoutMs, generation) {
+    const deadline = Date.now() + timeoutMs;
+    while (state.running && generation === state.generation) {
+      const found = find();
+      if (found) return found;
+      if (Date.now() >= deadline) return null;
+      if (!await waitDuringTransition(DOM_RETRY_MS, generation)) return null;
+    }
+    return null;
+  }
+
+  function findHuntMarker(slug) {
+    const guide = `hunt-${slug}`;
+    return Array.from(document.querySelectorAll('[data-guide]'))
+      .find((element) => element.dataset?.guide === guide) || null;
+  }
+
+  function getAvailableMapAreas() {
+    return Array.from(document.querySelectorAll('.map-area:not(.locked), .map-plate:not(.locked)'));
+  }
+
+  function isElementVisible(element) {
+    return Boolean(element) && (
+      typeof getComputedStyle !== 'function' || getComputedStyle(element).display !== 'none'
+    );
+  }
+
+  async function locateHuntMarker(slug, generation) {
+    const mapWindow = document.querySelector('.map-window');
+    if (!isElementVisible(mapWindow)) {
+      const mapButton = document.querySelector('button[data-guide="dock-map"]');
+      if (!mapButton) return null;
+      mapButton.click();
+      const opened = await waitForDom(
+        () => {
+          const candidate = document.querySelector('.map-window');
+          return isElementVisible(candidate) ? candidate : null;
+        },
+        MAP_OPEN_TIMEOUT_MS,
+        generation,
+      );
+      if (!opened) return null;
+    }
+
+    let marker = await waitForDom(
+      () => findHuntMarker(slug),
+      MARKER_SEARCH_TIMEOUT_MS,
+      generation,
+    );
+    if (marker) return marker;
+
+    for (const area of getAvailableMapAreas()) {
+      if (!state.running || generation !== state.generation) return null;
+      if (!area.matches?.('.on')) area.click();
+      if (!await waitDuringTransition(AREA_CHANGE_DELAY_MS, generation)) return null;
+      marker = await waitForDom(
+        () => findHuntMarker(slug),
+        MARKER_SEARCH_TIMEOUT_MS,
+        generation,
+      );
+      if (marker) return marker;
+    }
+    return null;
+  }
+
+  function waitForHuntEntry(slug, generation) {
+    resolveHuntEntry(false);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        if (state.huntEntryWaiter?.timer !== timer) return;
+        state.huntEntryWaiter = null;
+        resolve(false);
+      }, HUNT_ENTRY_TIMEOUT_MS);
+      state.huntEntryWaiter = { slug, generation, timer, resolve };
+    });
   }
 
   function clearVerification() {
@@ -358,21 +452,53 @@
     return (group?.targets || []).map((target) => target.name).join(' e ');
   }
 
-  function activateGroup(group) {
+  function activateConfirmedGroup(group) {
     if (!state.running || !group) return false;
     state.transitioning = false;
     state.transitionTimer = null;
     state.currentGroup = group;
     state.targetStartedAt = Date.now();
-    if (!sendWs({ type: 'enter-hunt', slug: group.slug })) {
-      state.running = false;
-      setMessage('Não foi possível entrar na próxima hunt. Automação pausada.', true);
-      return false;
-    }
     state.knownHuntSlug = group.slug;
     addHistory(`Entrou em ${group.slug}: ${describeTargets(group)}.`);
     setMessage(`Aguardando captura de ${describeTargets(group)}.`);
     return true;
+  }
+
+  async function navigateToGroup(group, generation) {
+    if (state.knownHuntSlug === group.slug) {
+      activateConfirmedGroup(group);
+      return;
+    }
+
+    setMessage(`Abrindo ${group.slug} pelo mapa do jogo...`);
+    const marker = await locateHuntMarker(group.slug, generation);
+    if (!state.running || generation !== state.generation) return;
+    if (!marker) {
+      state.running = false;
+      state.transitioning = false;
+      setMessage(`Não foi possível localizar ${group.slug} no mapa. Automação pausada.`, true);
+      return;
+    }
+
+    const confirmation = waitForHuntEntry(group.slug, generation);
+    try {
+      marker.click();
+    } catch (error) {
+      resolveHuntEntry(false);
+      state.running = false;
+      state.transitioning = false;
+      setMessage(`Falha ao abrir ${group.slug}: ${error?.message || String(error)}.`, true);
+      return;
+    }
+    const confirmed = await confirmation;
+    if (!state.running || generation !== state.generation) return;
+    if (!confirmed) {
+      state.running = false;
+      state.transitioning = false;
+      setMessage(`O jogo não confirmou a entrada em ${group.slug}. Automação pausada.`, true);
+      return;
+    }
+    activateConfirmedGroup(group);
   }
 
   function switchToGroup(group) {
@@ -383,30 +509,7 @@
     state.transitioning = true;
     state.targetStartedAt = null;
     renderPanel();
-
-    if (state.knownHuntSlug === group.slug) {
-      state.transitioning = false;
-      state.targetStartedAt = Date.now();
-      setMessage(`Aguardando captura de ${describeTargets(group)}.`);
-      renderPanel();
-      return true;
-    }
-
-    const shouldLeave = Boolean(state.knownHuntSlug);
-    if (shouldLeave && !sendWs({ type: 'leave-hunt' })) {
-      state.running = false;
-      state.transitioning = false;
-      setMessage('Não foi possível sair da hunt atual. Automação pausada.', true);
-      return false;
-    }
-    if (shouldLeave) state.knownHuntSlug = null;
-
-    if (!shouldLeave) return activateGroup(group);
-    setMessage(`Trocando para ${group.slug}...`);
-    state.transitionTimer = setTimeout(() => {
-      if (!state.running || generation !== state.generation) return;
-      activateGroup(group);
-    }, TRANSITION_DELAY_MS);
+    navigateToGroup(group, generation);
     return true;
   }
 
@@ -554,9 +657,17 @@
   }
 
   function handleOutgoing(message) {
-    if (!message || typeof message !== 'object' || internalSendDepth > 0) return;
+    if (!message || typeof message !== 'object') return;
     if (message.type === 'enter-hunt' && message.slug) {
       state.knownHuntSlug = String(message.slug);
+      const waiter = state.huntEntryWaiter;
+      if (
+        waiter &&
+        waiter.generation === state.generation &&
+        waiter.slug === state.knownHuntSlug
+      ) {
+        resolveHuntEntry(true);
+      }
     } else if (message.type === 'leave-hunt') {
       state.knownHuntSlug = null;
     }
@@ -571,17 +682,16 @@
   function handleOpen(socket) {
     adoptSocket(socket);
     if (!state.running || !state.currentGroup || state.transitioning) return;
-    if (sendWs({ type: 'enter-hunt', slug: state.currentGroup.slug })) {
-      state.knownHuntSlug = state.currentGroup.slug;
-      state.targetStartedAt = Date.now();
-      setMessage(`Conexão refeita; aguardando ${describeTargets(state.currentGroup)}.`);
-      addHistory(`Reentrou em ${state.currentGroup.slug} após reconexão.`);
-    }
+    state.knownHuntSlug = null;
+    addHistory('WebSocket reconectado; sincronizando a hunt pelo mapa.');
+    switchToGroup(state.currentGroup);
   }
 
   function handleClose(socket) {
     if (state.socket !== socket) return;
+    clearTransition();
     state.socket = null;
+    state.knownHuntSlug = null;
     if (state.running) setMessage('WebSocket desconectado; aguardando reconexão.', true);
     else renderPanel();
   }
@@ -863,6 +973,10 @@
         <details class="pap-log"><summary>Histórico</summary><div class="pap-history"></div></details>
       </div>`;
     document.body.appendChild(panel);
+    disposePanelDrag?.();
+    disposePanelDrag = uiMenu.makePanelDraggable(panel, {
+      storageKey: 'piw-auto-pokedex-panel-position-v1',
+    });
 
     panel.querySelector('.pap-close').addEventListener('click', () => { panel.hidden = true; });
     panel.querySelector('.pap-start').addEventListener('click', start);
@@ -964,6 +1078,8 @@
     unsubscribeBridge = null;
     unregisterMenu?.();
     unregisterMenu = null;
+    disposePanelDrag?.();
+    disposePanelDrag = null;
     interfaceObserver?.disconnect();
     interfaceObserver = null;
     if (observerTimer) clearTimeout(observerTimer);

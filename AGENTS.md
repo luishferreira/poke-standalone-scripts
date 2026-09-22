@@ -77,6 +77,7 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 - Ordena espécies acessíveis pelo valor de venda ao NPC (`sellValue > 0`, com fallback para `priceNpc`), depois por nível da hunt e ID. Hunts compartilhadas permanecem ativas até que todas as espécies pendentes daquele slug sejam capturadas.
 - `/api/game/pokedex` é uma resposta esparsa: presença com `caught: true` confirma captura; ausência não significa espécie inválida. Após sinal de captura, releia a Pokédex antes de avançar.
 - Ao concluir, permanece na última hunt. Pausar ou desinstalar também não envia `leave-hunt`.
+- Entrada e troca de hunt devem passar pelo marcador real do mapa (`data-guide="hunt-<slug>"`) e aguardar o `enter-hunt` emitido pelo próprio jogo. Enviar `enter-hunt` diretamente muda o servidor sem sincronizar a tela da SPA.
 - O VIP é apenas informativo na interface; sua ausência não bloqueia a automação.
 - API pública fica em `window.piwAutoPokedex`; registra seu botão no `window.piwScripts.uiMenu`.
 
@@ -139,6 +140,8 @@ Os cinco scripts próprios do Poke Idle World podem rodar na mesma página e o u
 O bridge por si só é passivo: instalar não abre conexão nem envia mensagens. Ele encadeia o construtor e o `send` encontrados, aceita wrapper externo antes ou depois, isola erros de subscribers e ignora mensagens do socket substituído. Atualmente é incorporado aos cinco userscripts do Poke Idle World; todos usam `subscribe` para lifecycle/mensagens e `sendJson` para seus envios, sem hooks próprios. Uma feature nunca deve chamar `bridge.uninstall()`; seu cleanup remove somente o próprio subscriber.
 
 `src/shared/ui-menu.js` implementa `window.piwScripts.uiMenu` v1. Os cinco scripts registram seus botões nele e removem somente o próprio registro no uninstall. O módulo reutiliza o `#script-sidebar` do PIW-QOL quando presente e cria uma sidebar equivalente quando ausente; essa coexistência é apenas pelo contêiner DOM, sem chamar funções internas nem acessar configurações do QOL. A ordem de carregamento deve funcionar nos dois sentidos.
+
+O mesmo módulo expõe `makePanelDraggable`. Os cinco painéis próprios do PIW usam o cabeçalho como alça, persistem coordenadas individuais no `sessionStorage`, limitam a posição ao viewport e restauram o layout padrão com duplo clique. Ao recriar ou desinstalar um painel, execute o cleanup retornado para não acumular listeners de resize/pointer.
 
 ## Estado e persistência no navegador
 

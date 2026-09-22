@@ -10,6 +10,8 @@ function createDomHarness({ withQolSidebar = false } = {}) {
   const timers = [];
   const observers = [];
   const documentListeners = new Map();
+  const windowListeners = new Map();
+  const storage = new Map();
 
   class FakeElement {
     constructor(tagName) {
@@ -23,6 +25,10 @@ function createDomHarness({ withQolSidebar = false } = {}) {
       this.textContent = '';
       this.attributes = new Map();
       this.listeners = new Map();
+      this.style = {};
+      this.offsetWidth = 0;
+      this.offsetHeight = 0;
+      this.title = '';
     }
 
     get childElementCount() { return this.children.length; }
@@ -59,9 +65,27 @@ function createDomHarness({ withQolSidebar = false } = {}) {
       this.listeners.set(type, handlers);
     }
 
-    dispatch(type) {
-      const event = { target: this, stopPropagation() {} };
+    removeEventListener(type, handler) {
+      const handlers = this.listeners.get(type) || [];
+      this.listeners.set(type, handlers.filter((item) => item !== handler));
+    }
+
+    dispatch(type, values = {}) {
+      const event = { target: this, stopPropagation() {}, preventDefault() {}, ...values };
       for (const handler of this.listeners.get(type) || []) handler(event);
+    }
+
+    getBoundingClientRect() {
+      const left = Number.parseFloat(this.style.left) || 0;
+      const top = Number.parseFloat(this.style.top) || 0;
+      return {
+        left,
+        top,
+        width: this.offsetWidth,
+        height: this.offsetHeight,
+        right: left + this.offsetWidth,
+        bottom: top + this.offsetHeight,
+      };
     }
 
     contains(target) {
@@ -69,6 +93,7 @@ function createDomHarness({ withQolSidebar = false } = {}) {
     }
 
     matches(selector) {
+      if (selector.split(',').some((part) => part.trim().toUpperCase() === this.tagName)) return true;
       if (selector.startsWith('#')) return this.id === selector.slice(1);
       if (selector.startsWith('.')) return this.className.split(/\s+/).includes(selector.slice(1));
       return false;
@@ -116,6 +141,11 @@ function createDomHarness({ withQolSidebar = false } = {}) {
   const context = {
     console: { warn() {} },
     document,
+    getComputedStyle(element) {
+      return { width: `${element.offsetWidth}px`, height: `${element.offsetHeight}px` };
+    },
+    innerHeight: 768,
+    innerWidth: 1024,
     MutationObserver: FakeMutationObserver,
     Number,
     String,
@@ -123,6 +153,20 @@ function createDomHarness({ withQolSidebar = false } = {}) {
     setTimeout(callback) {
       timers.push(callback);
       return timers.length;
+    },
+    sessionStorage: {
+      getItem(key) { return storage.get(key) ?? null; },
+      setItem(key, value) { storage.set(key, String(value)); },
+      removeItem(key) { storage.delete(key); },
+    },
+    addEventListener(type, handler) {
+      const handlers = windowListeners.get(type) || [];
+      handlers.push(handler);
+      windowListeners.set(type, handlers);
+    },
+    removeEventListener(type, handler) {
+      const handlers = windowListeners.get(type) || [];
+      windowListeners.set(type, handlers.filter((item) => item !== handler));
     },
   };
   context.window = context;
@@ -147,7 +191,20 @@ function createDomHarness({ withQolSidebar = false } = {}) {
     flush();
   }
 
-  return { context, document, flush, mutate, runAgain: () => vm.runInNewContext(source, context) };
+  function dispatchWindow(type, values = {}) {
+    const event = { preventDefault() {}, ...values };
+    for (const handler of [...(windowListeners.get(type) || [])]) handler(event);
+  }
+
+  return {
+    context,
+    document,
+    dispatchWindow,
+    flush,
+    mutate,
+    storage,
+    runAgain: () => vm.runInNewContext(source, context),
+  };
 }
 
 test('cria a própria sidebar quando o PIW-QOL não existe', () => {
@@ -238,4 +295,55 @@ test('recria o menu quando a SPA remove a sidebar', () => {
 
   assert.ok(harness.document.getElementById('script-sidebar'));
   assert.ok(harness.document.getElementById('test-refill'));
+});
+
+test('move painel, salva por aba, limita à tela e restaura no duplo clique', () => {
+  const harness = createDomHarness();
+  const panel = harness.document.createElement('section');
+  panel.offsetWidth = 300;
+  panel.offsetHeight = 200;
+  const header = harness.document.createElement('header');
+  const close = harness.document.createElement('button');
+  header.appendChild(close);
+  panel.appendChild(header);
+  harness.document.body.appendChild(panel);
+
+  const cleanup = harness.context.piwScripts.uiMenu.makePanelDraggable(panel, {
+    storageKey: 'test-panel-position',
+  });
+  header.dispatch('pointerdown', {
+    button: 0,
+    isPrimary: true,
+    pointerId: 1,
+    clientX: 10,
+    clientY: 10,
+  });
+  harness.dispatchWindow('pointermove', { pointerId: 1, clientX: 110, clientY: 90 });
+  harness.dispatchWindow('pointerup', { pointerId: 1 });
+
+  assert.equal(panel.style.left, '100px');
+  assert.equal(panel.style.top, '80px');
+  assert.deepEqual(JSON.parse(harness.storage.get('test-panel-position')), { left: 100, top: 80 });
+
+  harness.context.innerWidth = 250;
+  harness.dispatchWindow('resize');
+  assert.equal(panel.style.left, '0px');
+  assert.deepEqual(JSON.parse(harness.storage.get('test-panel-position')), { left: 0, top: 80 });
+
+  header.dispatch('dblclick');
+  assert.equal(panel.style.left, '');
+  assert.equal(panel.style.top, '');
+  assert.equal(harness.storage.has('test-panel-position'), false);
+
+  close.dispatch('pointerdown', {
+    button: 0,
+    isPrimary: true,
+    pointerId: 2,
+    clientX: 10,
+    clientY: 10,
+  });
+  harness.dispatchWindow('pointermove', { pointerId: 2, clientX: 150, clientY: 150 });
+  assert.equal(panel.style.left, '');
+  assert.equal(cleanup(), true);
+  assert.equal(cleanup(), false);
 });

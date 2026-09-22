@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Auto Refill
 // @namespace    poke-manager
-// @version      1.1.0
+// @version      1.2.0
 // @description  Reabastece potions e Pokébolas com limites configuráveis e venda opcional de loot comum.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -119,6 +119,7 @@
   let unsubscribeBridge = null;
   let unregisterMenu = null;
   let interfaceObserver = null;
+  let disposePanelDrag = null;
   let observerTimer = null;
 
   function saveSettings() {
@@ -679,6 +680,10 @@
         </div>
       </div>`;
     document.body.appendChild(panel);
+    disposePanelDrag?.();
+    disposePanelDrag = uiMenu.makePanelDraggable(panel, {
+      storageKey: 'piw-auto-refill-panel-position-v1',
+    });
     syncFormFromSettings(panel);
     populateProductSelectors();
 
@@ -828,6 +833,8 @@
       unsubscribeBridge = null;
       unregisterMenu?.();
       unregisterMenu = null;
+      disposePanelDrag?.();
+      disposePanelDrag = null;
       interfaceObserver?.disconnect();
       interfaceObserver = null;
       if (observerTimer) clearTimeout(observerTimer);

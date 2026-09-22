@@ -56,7 +56,9 @@ O build aceita módulos compartilhados globais ou por userscript em `scripts/use
 
 Auto Catch, Auto Reconnect, Auto Boss, Auto Refill e Auto Pokédex aparecem numa barra lateral compartilhada. Quando o PIW-QOL está instalado, os botões entram na mesma barra lateral dele; sem o PIW-QOL, os próprios scripts criam uma barra visualmente equivalente. A integração é apenas de interface: nenhuma automação depende do QOL para funcionar.
 
-O Auto Pokédex inicia pausado e não realiza capturas. Ao ser ativado, cruza a Pokédex da conta com as hunts acessíveis para o nível atual, ordena os alvos pelo menor valor de venda ao NPC e permanece em cada hunt até a captura ser confirmada. Ele foi pensado para uso com o autocatch VIP, ignora espécies sem hunt direta e permanece na última hunt ao concluir.
+Os painéis podem ser movidos arrastando o cabeçalho. A posição é lembrada somente na aba atual; dê um duplo clique no cabeçalho para voltar à posição original.
+
+O Auto Pokédex inicia pausado e não realiza capturas. Ao ser ativado, cruza a Pokédex da conta com as hunts acessíveis para o nível atual, ordena os alvos pelo menor valor de venda ao NPC e usa os marcadores do mapa do próprio jogo para trocar de hunt sem dessincronizar a tela. Ele permanece em cada hunt até a captura ser confirmada, foi pensado para uso com o autocatch VIP, ignora espécies sem hunt direta e permanece na última hunt ao concluir.
 
 O Auto Refill inicia pausado. No painel, escolha potion e ball, configure threshold, quantidade e reserva de gold e então ative. A venda automática de loot comum é opcional e vende itens de NPC dentro da regra indicada na interface.
 

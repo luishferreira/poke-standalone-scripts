@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Auto reconnect
 // @namespace    http://tampermonkey.net/
-// @version      2026-09-21.1
+// @version      2026-09-22.1
 // @description  auto reconecta e pula mega sableye
 // @author       Luis
 // @match        https://poke.idleworld.online/play
@@ -63,6 +63,7 @@
   };
   let unsubscribeBridge = null;
   let unregisterMenu = null;
+  let disposePanelDrag = null;
 
   function readSavedState() {
     try {
@@ -177,6 +178,10 @@
         <button class="phw-sableye" type="button">Pular Sableye: ligado</button>
       </div>`;
     document.body.appendChild(panel);
+    disposePanelDrag?.();
+    disposePanelDrag = uiMenu.makePanelDraggable(panel, {
+      storageKey: 'piw-hunt-watchdog-panel-position-v1',
+    });
     panel.querySelector('.phw-close').addEventListener('click', () => { panel.hidden = true; });
     panel.querySelector('.phw-toggle').addEventListener('click', () => {
       if (state.enabled) window.piwHuntWatchdog.stop();
@@ -380,6 +385,8 @@
       unsubscribeBridge = null;
       unregisterMenu?.();
       unregisterMenu = null;
+      disposePanelDrag?.();
+      disposePanelDrag = null;
       state.enabled = false;
       document.querySelector('#piw-hunt-watchdog-panel')?.remove();
       document.querySelector('#piw-hunt-watchdog-button')?.remove();

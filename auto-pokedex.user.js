@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Auto Pokédex
 // @namespace    poke-manager
-// @version      1.0.0
+// @version      1.1.1
 // @description  Percorre automaticamente as hunts acessíveis até completar as capturas pendentes da Pokédex.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -295,7 +295,210 @@
   'use strict';
 
   const namespace = window.piwScripts = window.piwScripts || {};
-  if (namespace.uiMenu?.apiVersion === 1) return;
+  const attachedPanels = new WeakMap();
+
+  function createPanelDragHandler(panel, {
+    storageKey,
+    handle = panel?.querySelector?.('header'),
+    margin = 8,
+  } = {}) {
+    if (!panel || !handle || !storageKey) {
+      throw new TypeError('Configuração de painel móvel inválida.');
+    }
+
+    attachedPanels.get(panel)?.();
+    const safeMargin = Math.max(0, Number(margin) || 0);
+    const originalHandleStyle = {
+      cursor: handle.style.cursor,
+      touchAction: handle.style.touchAction,
+      userSelect: handle.style.userSelect,
+    };
+    let dragging = null;
+    let lastSize = { width: 0, height: 0 };
+
+    function readPosition() {
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+        const left = Number(saved?.left);
+        const top = Number(saved?.top);
+        return Number.isFinite(left) && Number.isFinite(top) ? { left, top } : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function savePosition(position) {
+      try {
+        sessionStorage.setItem(storageKey, JSON.stringify(position));
+      } catch {
+        // O movimento continua funcionando mesmo quando o storage está indisponível.
+      }
+    }
+
+    function removeSavedPosition() {
+      try {
+        sessionStorage.removeItem(storageKey);
+      } catch {
+        // A posição visual ainda pode ser restaurada sem acesso ao storage.
+      }
+    }
+
+    function getPanelSize() {
+      const rect = panel.getBoundingClientRect();
+      const computed = typeof getComputedStyle === 'function' ? getComputedStyle(panel) : null;
+      const measured = {
+        width: rect.width || panel.offsetWidth || parseFloat(computed?.width) || 0,
+        height: rect.height || panel.offsetHeight || parseFloat(computed?.height) || 0,
+      };
+      if (measured.width > 0) lastSize.width = measured.width;
+      if (measured.height > 0) lastSize.height = measured.height;
+      return {
+        width: measured.width || lastSize.width,
+        height: measured.height || lastSize.height,
+      };
+    }
+
+    function clampPosition(left, top) {
+      const { width, height } = getPanelSize();
+      const viewportWidth = Number(window.innerWidth) || document.documentElement?.clientWidth || width;
+      const viewportHeight = Number(window.innerHeight) || document.documentElement?.clientHeight || height;
+      const minLeft = Math.min(safeMargin, Math.max(0, viewportWidth - width));
+      const minTop = Math.min(safeMargin, Math.max(0, viewportHeight - height));
+      const maxLeft = Math.max(minLeft, viewportWidth - width - safeMargin);
+      const maxTop = Math.max(minTop, viewportHeight - height - safeMargin);
+      return {
+        left: Math.round(Math.min(maxLeft, Math.max(minLeft, Number(left) || 0))),
+        top: Math.round(Math.min(maxTop, Math.max(minTop, Number(top) || 0))),
+      };
+    }
+
+    function applyPosition(left, top, { persist = false } = {}) {
+      const position = clampPosition(left, top);
+      panel.style.left = `${position.left}px`;
+      panel.style.top = `${position.top}px`;
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+      panel.style.transform = 'none';
+      if (persist) savePosition(position);
+      return position;
+    }
+
+    function isInteractive(target) {
+      let current = target;
+      while (current && current !== handle) {
+        if (current.matches?.('button,a,input,select,textarea,label,[data-piw-no-drag]')) return true;
+        current = current.parentElement;
+      }
+      return false;
+    }
+
+    function stopDragging(event) {
+      if (!dragging || (event?.pointerId != null && event.pointerId !== dragging.pointerId)) return;
+      const position = applyPosition(panel.getBoundingClientRect().left, panel.getBoundingClientRect().top);
+      savePosition(position);
+      dragging = null;
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', stopDragging);
+      window.removeEventListener('pointercancel', stopDragging);
+    }
+
+    function onPointerMove(event) {
+      if (!dragging || event.pointerId !== dragging.pointerId) return;
+      applyPosition(event.clientX - dragging.offsetX, event.clientY - dragging.offsetY);
+      event.preventDefault?.();
+    }
+
+    function onPointerDown(event) {
+      if ((event.button != null && event.button !== 0) || event.isPrimary === false || isInteractive(event.target)) {
+        return;
+      }
+      const rect = panel.getBoundingClientRect();
+      dragging = {
+        pointerId: event.pointerId,
+        offsetX: event.clientX - rect.left,
+        offsetY: event.clientY - rect.top,
+      };
+      applyPosition(rect.left, rect.top);
+      handle.setPointerCapture?.(event.pointerId);
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', stopDragging);
+      window.addEventListener('pointercancel', stopDragging);
+      event.preventDefault?.();
+    }
+
+    function resetPosition(event) {
+      if (isInteractive(event?.target)) return;
+      dragging = null;
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', stopDragging);
+      window.removeEventListener('pointercancel', stopDragging);
+      panel.style.left = '';
+      panel.style.top = '';
+      panel.style.right = '';
+      panel.style.bottom = '';
+      panel.style.transform = '';
+      removeSavedPosition();
+      event?.preventDefault?.();
+    }
+
+    function keepInsideViewport() {
+      if (!panel.style.left || !panel.style.top) return;
+      const rect = panel.getBoundingClientRect();
+      const styledLeft = parseFloat(panel.style.left);
+      const styledTop = parseFloat(panel.style.top);
+      const position = applyPosition(
+        Number.isFinite(styledLeft) ? styledLeft : rect.left,
+        Number.isFinite(styledTop) ? styledTop : rect.top,
+      );
+      savePosition(position);
+    }
+
+    handle.dataset.piwDraggableHandle = 'true';
+    handle.title = handle.title || 'Arraste para mover · duplo clique para restaurar';
+    handle.style.cursor = 'move';
+    handle.style.touchAction = 'none';
+    handle.style.userSelect = 'none';
+    handle.addEventListener('pointerdown', onPointerDown);
+    handle.addEventListener('dblclick', resetPosition);
+    window.addEventListener('resize', keepInsideViewport);
+    const visibilityObserver = typeof MutationObserver === 'function'
+      ? new MutationObserver(() => {
+          if (!panel.hidden) keepInsideViewport();
+        })
+      : null;
+    visibilityObserver?.observe(panel, { attributes: true, attributeFilter: ['hidden'] });
+    const savedPosition = readPosition();
+    if (savedPosition) applyPosition(savedPosition.left, savedPosition.top);
+
+    let active = true;
+    const cleanup = () => {
+      if (!active) return false;
+      active = false;
+      dragging = null;
+      handle.removeEventListener('pointerdown', onPointerDown);
+      handle.removeEventListener('dblclick', resetPosition);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', stopDragging);
+      window.removeEventListener('pointercancel', stopDragging);
+      window.removeEventListener('resize', keepInsideViewport);
+      visibilityObserver?.disconnect();
+      handle.style.cursor = originalHandleStyle.cursor;
+      handle.style.touchAction = originalHandleStyle.touchAction;
+      handle.style.userSelect = originalHandleStyle.userSelect;
+      delete handle.dataset.piwDraggableHandle;
+      attachedPanels.delete(panel);
+      return true;
+    };
+    attachedPanels.set(panel, cleanup);
+    return cleanup;
+  }
+
+  if (namespace.uiMenu?.apiVersion === 1) {
+    if (typeof namespace.uiMenu.makePanelDraggable !== 'function') {
+      namespace.uiMenu.makePanelDraggable = createPanelDragHandler;
+    }
+    return;
+  }
 
   const SIDEBAR_ID = 'script-sidebar';
   const GROUP_ID = 'piw-tools-sidebar-group';
@@ -330,6 +533,9 @@
       #${GROUP_ID} .piw-tools-sidebar-item:focus-visible {
         background:rgba(255,255,255,.12);
         outline:none;
+      }
+      [data-piw-draggable-handle="true"] {
+        cursor:move;touch-action:none;user-select:none;
       }
     `;
     (document.head || document.documentElement).appendChild(style);
@@ -457,6 +663,7 @@
     refresh() {
       ensureMounted();
     },
+    makePanelDraggable: createPanelDragHandler,
     status() {
       return {
         installed: true,
@@ -493,7 +700,11 @@
   const POKEDEX_URL = '/api/game/pokedex';
   const CHARACTER_URL = '/api/characters/me';
   const AUTH_REFRESH_URL = '/api/auth/refresh';
-  const TRANSITION_DELAY_MS = 1_000;
+  const MAP_OPEN_TIMEOUT_MS = 1_500;
+  const MARKER_SEARCH_TIMEOUT_MS = 1_500;
+  const HUNT_ENTRY_TIMEOUT_MS = 4_000;
+  const DOM_RETRY_MS = 100;
+  const AREA_CHANGE_DELAY_MS = 250;
   const VERIFY_RETRY_MS = 2_500;
   const VERIFY_RETRIES = 4;
   const MAX_HISTORY = 10;
@@ -538,6 +749,8 @@
     history: [],
     generation: 0,
     transitionTimer: null,
+    transitionResolve: null,
+    huntEntryWaiter: null,
     verifyTimer: null,
     verifyPromise: null,
     verifyQueued: false,
@@ -546,9 +759,9 @@
   let unsubscribeBridge = null;
   let unregisterMenu = null;
   let interfaceObserver = null;
+  let disposePanelDrag = null;
   let observerTimer = null;
   let uiTimer = null;
-  let internalSendDepth = 0;
 
   function normalizeName(value) {
     return String(value || '')
@@ -779,22 +992,110 @@
     buildPlan();
   }
 
-  function sendWs(payload) {
-    state.socket = bridge.getSocket();
-    if (!state.socket || state.socket.readyState !== WebSocket.OPEN) return false;
-    internalSendDepth += 1;
-    try {
-      return bridge.sendJson(payload);
-    } finally {
-      internalSendDepth -= 1;
-    }
+  function resolveHuntEntry(confirmed) {
+    const waiter = state.huntEntryWaiter;
+    if (!waiter) return;
+    clearTimeout(waiter.timer);
+    state.huntEntryWaiter = null;
+    waiter.resolve(Boolean(confirmed));
   }
 
   function clearTransition() {
     state.generation += 1;
     if (state.transitionTimer) clearTimeout(state.transitionTimer);
     state.transitionTimer = null;
+    state.transitionResolve?.(false);
+    state.transitionResolve = null;
+    resolveHuntEntry(false);
     state.transitioning = false;
+  }
+
+  function waitDuringTransition(delayMs, generation) {
+    return new Promise((resolve) => {
+      state.transitionResolve = resolve;
+      state.transitionTimer = setTimeout(() => {
+        state.transitionTimer = null;
+        state.transitionResolve = null;
+        resolve(state.running && generation === state.generation);
+      }, delayMs);
+    });
+  }
+
+  async function waitForDom(find, timeoutMs, generation) {
+    const deadline = Date.now() + timeoutMs;
+    while (state.running && generation === state.generation) {
+      const found = find();
+      if (found) return found;
+      if (Date.now() >= deadline) return null;
+      if (!await waitDuringTransition(DOM_RETRY_MS, generation)) return null;
+    }
+    return null;
+  }
+
+  function findHuntMarker(slug) {
+    const guide = `hunt-${slug}`;
+    return Array.from(document.querySelectorAll('[data-guide]'))
+      .find((element) => element.dataset?.guide === guide) || null;
+  }
+
+  function getAvailableMapAreas() {
+    return Array.from(document.querySelectorAll('.map-area:not(.locked), .map-plate:not(.locked)'));
+  }
+
+  function isElementVisible(element) {
+    return Boolean(element) && (
+      typeof getComputedStyle !== 'function' || getComputedStyle(element).display !== 'none'
+    );
+  }
+
+  async function locateHuntMarker(slug, generation) {
+    const mapWindow = document.querySelector('.map-window');
+    if (!isElementVisible(mapWindow)) {
+      const mapButton = document.querySelector('button[data-guide="dock-map"]');
+      if (!mapButton) return null;
+      mapButton.click();
+      const opened = await waitForDom(
+        () => {
+          const candidate = document.querySelector('.map-window');
+          return isElementVisible(candidate) ? candidate : null;
+        },
+        MAP_OPEN_TIMEOUT_MS,
+        generation,
+      );
+      if (!opened) return null;
+    }
+
+    let marker = await waitForDom(
+      () => findHuntMarker(slug),
+      MARKER_SEARCH_TIMEOUT_MS,
+      generation,
+    );
+    if (marker) return marker;
+
+    for (const area of getAvailableMapAreas()) {
+      if (!state.running || generation !== state.generation) return null;
+      if (!area.matches?.('.on')) area.click();
+      if (!await waitDuringTransition(AREA_CHANGE_DELAY_MS, generation)) return null;
+      marker = await waitForDom(
+        () => findHuntMarker(slug),
+        MARKER_SEARCH_TIMEOUT_MS,
+        generation,
+      );
+      if (marker) return marker;
+    }
+    return null;
+  }
+
+  function waitForHuntEntry(slug, generation) {
+    resolveHuntEntry(false);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        if (state.huntEntryWaiter?.timer !== timer) return;
+        state.huntEntryWaiter = null;
+        resolve(false);
+      }, HUNT_ENTRY_TIMEOUT_MS);
+      state.huntEntryWaiter = { slug, generation, timer, resolve };
+    });
   }
 
   function clearVerification() {
@@ -815,21 +1116,53 @@
     return (group?.targets || []).map((target) => target.name).join(' e ');
   }
 
-  function activateGroup(group) {
+  function activateConfirmedGroup(group) {
     if (!state.running || !group) return false;
     state.transitioning = false;
     state.transitionTimer = null;
     state.currentGroup = group;
     state.targetStartedAt = Date.now();
-    if (!sendWs({ type: 'enter-hunt', slug: group.slug })) {
-      state.running = false;
-      setMessage('Não foi possível entrar na próxima hunt. Automação pausada.', true);
-      return false;
-    }
     state.knownHuntSlug = group.slug;
     addHistory(`Entrou em ${group.slug}: ${describeTargets(group)}.`);
     setMessage(`Aguardando captura de ${describeTargets(group)}.`);
     return true;
+  }
+
+  async function navigateToGroup(group, generation) {
+    if (state.knownHuntSlug === group.slug) {
+      activateConfirmedGroup(group);
+      return;
+    }
+
+    setMessage(`Abrindo ${group.slug} pelo mapa do jogo...`);
+    const marker = await locateHuntMarker(group.slug, generation);
+    if (!state.running || generation !== state.generation) return;
+    if (!marker) {
+      state.running = false;
+      state.transitioning = false;
+      setMessage(`Não foi possível localizar ${group.slug} no mapa. Automação pausada.`, true);
+      return;
+    }
+
+    const confirmation = waitForHuntEntry(group.slug, generation);
+    try {
+      marker.click();
+    } catch (error) {
+      resolveHuntEntry(false);
+      state.running = false;
+      state.transitioning = false;
+      setMessage(`Falha ao abrir ${group.slug}: ${error?.message || String(error)}.`, true);
+      return;
+    }
+    const confirmed = await confirmation;
+    if (!state.running || generation !== state.generation) return;
+    if (!confirmed) {
+      state.running = false;
+      state.transitioning = false;
+      setMessage(`O jogo não confirmou a entrada em ${group.slug}. Automação pausada.`, true);
+      return;
+    }
+    activateConfirmedGroup(group);
   }
 
   function switchToGroup(group) {
@@ -840,30 +1173,7 @@
     state.transitioning = true;
     state.targetStartedAt = null;
     renderPanel();
-
-    if (state.knownHuntSlug === group.slug) {
-      state.transitioning = false;
-      state.targetStartedAt = Date.now();
-      setMessage(`Aguardando captura de ${describeTargets(group)}.`);
-      renderPanel();
-      return true;
-    }
-
-    const shouldLeave = Boolean(state.knownHuntSlug);
-    if (shouldLeave && !sendWs({ type: 'leave-hunt' })) {
-      state.running = false;
-      state.transitioning = false;
-      setMessage('Não foi possível sair da hunt atual. Automação pausada.', true);
-      return false;
-    }
-    if (shouldLeave) state.knownHuntSlug = null;
-
-    if (!shouldLeave) return activateGroup(group);
-    setMessage(`Trocando para ${group.slug}...`);
-    state.transitionTimer = setTimeout(() => {
-      if (!state.running || generation !== state.generation) return;
-      activateGroup(group);
-    }, TRANSITION_DELAY_MS);
+    navigateToGroup(group, generation);
     return true;
   }
 
@@ -1011,9 +1321,17 @@
   }
 
   function handleOutgoing(message) {
-    if (!message || typeof message !== 'object' || internalSendDepth > 0) return;
+    if (!message || typeof message !== 'object') return;
     if (message.type === 'enter-hunt' && message.slug) {
       state.knownHuntSlug = String(message.slug);
+      const waiter = state.huntEntryWaiter;
+      if (
+        waiter &&
+        waiter.generation === state.generation &&
+        waiter.slug === state.knownHuntSlug
+      ) {
+        resolveHuntEntry(true);
+      }
     } else if (message.type === 'leave-hunt') {
       state.knownHuntSlug = null;
     }
@@ -1028,17 +1346,16 @@
   function handleOpen(socket) {
     adoptSocket(socket);
     if (!state.running || !state.currentGroup || state.transitioning) return;
-    if (sendWs({ type: 'enter-hunt', slug: state.currentGroup.slug })) {
-      state.knownHuntSlug = state.currentGroup.slug;
-      state.targetStartedAt = Date.now();
-      setMessage(`Conexão refeita; aguardando ${describeTargets(state.currentGroup)}.`);
-      addHistory(`Reentrou em ${state.currentGroup.slug} após reconexão.`);
-    }
+    state.knownHuntSlug = null;
+    addHistory('WebSocket reconectado; sincronizando a hunt pelo mapa.');
+    switchToGroup(state.currentGroup);
   }
 
   function handleClose(socket) {
     if (state.socket !== socket) return;
+    clearTransition();
     state.socket = null;
+    state.knownHuntSlug = null;
     if (state.running) setMessage('WebSocket desconectado; aguardando reconexão.', true);
     else renderPanel();
   }
@@ -1320,6 +1637,10 @@
         <details class="pap-log"><summary>Histórico</summary><div class="pap-history"></div></details>
       </div>`;
     document.body.appendChild(panel);
+    disposePanelDrag?.();
+    disposePanelDrag = uiMenu.makePanelDraggable(panel, {
+      storageKey: 'piw-auto-pokedex-panel-position-v1',
+    });
 
     panel.querySelector('.pap-close').addEventListener('click', () => { panel.hidden = true; });
     panel.querySelector('.pap-start').addEventListener('click', start);
@@ -1421,6 +1742,8 @@
     unsubscribeBridge = null;
     unregisterMenu?.();
     unregisterMenu = null;
+    disposePanelDrag?.();
+    disposePanelDrag = null;
     interfaceObserver?.disconnect();
     interfaceObserver = null;
     if (observerTimer) clearTimeout(observerTimer);

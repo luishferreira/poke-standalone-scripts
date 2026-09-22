@@ -6,13 +6,24 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'auto-pokedex.user.js'), 'utf8');
 
-function createHarness({ creatures, markers, pokedex = [], level = 100 } = {}) {
+function createHarness({
+  creatures,
+  markers,
+  pokedex = [],
+  level = 100,
+  availableMarkerSlugs = null,
+  markersVisibleAfterAreaClick = false,
+} = {}) {
   let now = 0;
   let nextTimerId = 1;
   const timers = new Map();
   const storage = new Map();
   let currentPokedex = pokedex;
   let currentLevel = level;
+  let currentSocket = null;
+  let visualHuntSlug = null;
+  let mapOpen = false;
+  let areaSelected = false;
   const requests = [];
 
   class FakeDate extends Date {
@@ -34,6 +45,7 @@ function createHarness({ creatures, markers, pokedex = [], level = 100 } = {}) {
       this.readyState = FakeWebSocket.OPEN;
       this.sent = [];
       this.listeners = new Map();
+      currentSocket = this;
     }
 
     send(data) {
@@ -57,6 +69,24 @@ function createHarness({ creatures, markers, pokedex = [], level = 100 } = {}) {
     }
   }
 
+  const mapButton = {
+    click() { mapOpen = true; },
+  };
+  const allowedMarkers = availableMarkerSlugs == null ? null : new Set(availableMarkerSlugs);
+  const markerElements = (markers || [])
+    .filter((entry) => !allowedMarkers || allowedMarkers.has(entry.slug))
+    .map((entry) => ({
+      dataset: { guide: `hunt-${entry.slug}` },
+      click() {
+        visualHuntSlug = entry.slug;
+        currentSocket?.send(JSON.stringify({ type: 'enter-hunt', slug: entry.slug }));
+      },
+    }));
+  const mapArea = {
+    matches() { return areaSelected; },
+    click() { areaSelected = true; },
+  };
+
   const context = {
     console: { log() {}, warn() {} },
     Date: FakeDate,
@@ -76,7 +106,18 @@ function createHarness({ creatures, markers, pokedex = [], level = 100 } = {}) {
       readyState: 'loading',
       addEventListener() {},
       createElement() { throw new Error('DOM não deve ser criado neste teste'); },
-      querySelector() { return null; },
+      querySelector(selector) {
+        if (selector === 'button[data-guide="dock-map"]') return mapButton;
+        if (selector === '.map-window') return mapOpen ? {} : null;
+        return null;
+      },
+      querySelectorAll(selector) {
+        if (selector === '[data-guide]') {
+          return mapOpen && (!markersVisibleAfterAreaClick || areaSelected) ? markerElements : [];
+        }
+        if (selector === '.map-area:not(.locked), .map-plate:not(.locked)') return [mapArea];
+        return [];
+      },
     },
     fetch: async (url, options = {}) => {
       requests.push({ url, options });
@@ -88,6 +129,7 @@ function createHarness({ creatures, markers, pokedex = [], level = 100 } = {}) {
       else throw new Error(`Request inesperada: ${url}`);
       return { ok: true, status: 200, json: async () => data };
     },
+    getComputedStyle() { return { display: 'block' }; },
     sessionStorage: {
       getItem(key) { return storage.get(key) ?? null; },
       setItem(key, value) { storage.set(key, String(value)); },
@@ -145,6 +187,7 @@ function createHarness({ creatures, markers, pokedex = [], level = 100 } = {}) {
     setPokedex(value) { currentPokedex = value; },
     settle,
     tick,
+    visualHuntSlug() { return visualHuntSlug; },
   };
 }
 
@@ -197,6 +240,7 @@ test('ordena por preço, filtra capturados e nível e ignora quem não tem hunt'
   const socket = harness.captureSocket();
 
   assert.equal(await harness.api.start(), true);
+  await harness.settle();
   const status = harness.api.status();
   assert.equal(status.currentGroup.slug, 'paras');
   assert.deepEqual(plain(status.queue.map((group) => group.slug)), ['paras', 'pidgey']);
@@ -209,6 +253,7 @@ test('ordena por preço, filtra capturados e nível e ignora quem não tem hunt'
     skipped: 0,
   });
   assert.deepEqual(socket.sent, [{ type: 'enter-hunt', slug: 'paras' }]);
+  assert.equal(harness.visualHuntSlug(), 'paras');
 });
 
 test('confirma a captura pela Pokédex antes de trocar de hunt e nunca envia catch', async () => {
@@ -218,6 +263,7 @@ test('confirma a captura pela Pokédex antes de trocar de hunt e nunca envia cat
   });
   const socket = harness.captureSocket();
   await harness.api.start();
+  await harness.settle();
 
   socket.emit('message', { type: 'catch-result', success: true, auto: true });
   await harness.tick(0);
@@ -226,13 +272,11 @@ test('confirma a captura pela Pokédex antes de trocar de hunt e nunca envia cat
   harness.setPokedex([{ id: 46, caught: true }]);
   socket.emit('message', { type: 'poke-delta', poke: { xp: 0 } });
   await harness.tick(2_500);
-  assert.deepEqual(sentTypes(socket), ['enter-hunt', 'leave-hunt']);
-  await harness.tick(1_000);
   assert.deepEqual(socket.sent, [
     { type: 'enter-hunt', slug: 'paras' },
-    { type: 'leave-hunt' },
     { type: 'enter-hunt', slug: 'pidgey' },
   ]);
+  assert.equal(harness.visualHuntSlug(), 'pidgey');
   assert.equal(socket.sent.some((message) => message.type === 'catch'), false);
 });
 
@@ -251,6 +295,7 @@ test('mantém hunt compartilhada até capturar todas as espécies dela', async (
   });
   const socket = harness.captureSocket();
   await harness.api.start();
+  await harness.settle();
   assert.deepEqual(plain(harness.api.status().currentGroup.targets.map((target) => target.id)), [9101, 9102]);
 
   harness.setPokedex([{ id: 9101, caught: true }]);
@@ -262,9 +307,9 @@ test('mantém hunt compartilhada até capturar todas as espécies dela', async (
   harness.setPokedex([{ id: 9101, caught: true }, { id: 9102, caught: true }]);
   socket.emit('message', { type: 'catch-result', success: true, auto: true });
   await harness.tick(0);
-  assert.deepEqual(sentTypes(socket), ['enter-hunt', 'leave-hunt']);
-  await harness.tick(1_000);
+  assert.deepEqual(sentTypes(socket), ['enter-hunt', 'enter-hunt']);
   assert.equal(harness.api.status().currentGroup.slug, 'paras');
+  assert.equal(harness.visualHuntSlug(), 'paras');
 });
 
 test('escolhe a variante cujo huntLevel corresponde ao marker duplicado', async () => {
@@ -279,6 +324,7 @@ test('escolhe a variante cujo huntLevel corresponde ao marker duplicado', async 
   harness.captureSocket();
 
   await harness.api.start();
+  await harness.settle();
   assert.equal(harness.api.status().currentGroup.targets[0].id, 13252);
 });
 
@@ -289,6 +335,7 @@ test('pausar e concluir não abandonam a hunt atual', async () => {
   });
   const socket = harness.captureSocket();
   await harness.api.start();
+  await harness.settle();
   harness.api.pause();
   assert.deepEqual(sentTypes(socket), ['enter-hunt']);
 
@@ -309,11 +356,13 @@ test('pular remove o grupo da execução e segue para o próximo alvo', async ()
   });
   const socket = harness.captureSocket();
   await harness.api.start();
+  await harness.settle();
 
   assert.equal(harness.api.skipCurrent(), true);
-  assert.deepEqual(sentTypes(socket), ['enter-hunt', 'leave-hunt']);
-  await harness.tick(1_000);
+  await harness.settle();
+  assert.deepEqual(sentTypes(socket), ['enter-hunt', 'enter-hunt']);
   assert.equal(harness.api.status().currentGroup.slug, 'pidgey');
+  assert.equal(harness.visualHuntSlug(), 'pidgey');
   assert.deepEqual(plain(harness.api.status().skippedIds), [46]);
 });
 
@@ -324,14 +373,48 @@ test('reentra no alvo depois de reconectar e uninstall remove somente seu subscr
   });
   const firstSocket = harness.captureSocket();
   await harness.api.start();
+  await harness.settle();
   firstSocket.readyState = harness.context.WebSocket.CLOSED;
   firstSocket.emit('close');
 
   const secondSocket = harness.captureSocket();
   secondSocket.emit('open');
+  await harness.settle();
   assert.deepEqual(secondSocket.sent, [{ type: 'enter-hunt', slug: 'paras' }]);
 
   harness.api.uninstall();
   assert.equal(harness.context.piwScripts.wsBridge.status().subscribers, 0);
   assert.deepEqual(sentTypes(secondSocket), ['enter-hunt']);
+});
+
+test('pausa sem enviar enter-hunt direto quando o marcador visual não existe', async () => {
+  const harness = createHarness({
+    creatures: [creature(46, 'Paras', 60)],
+    markers: [marker('paras', 'Paras')],
+    availableMarkerSlugs: [],
+  });
+  const socket = harness.captureSocket();
+
+  assert.equal(await harness.api.start(), true);
+  await harness.tick(3_500);
+  assert.equal(harness.api.status().running, false);
+  assert.match(harness.api.status().lastMessage, /localizar paras no mapa/i);
+  assert.deepEqual(socket.sent, []);
+  assert.equal(harness.visualHuntSlug(), null);
+});
+
+test('percorre as áreas do mapa até o marcador da hunt ser renderizado', async () => {
+  const harness = createHarness({
+    creatures: [creature(46, 'Paras', 60)],
+    markers: [marker('paras', 'Paras')],
+    markersVisibleAfterAreaClick: true,
+  });
+  const socket = harness.captureSocket();
+
+  assert.equal(await harness.api.start(), true);
+  await harness.tick(2_000);
+  assert.equal(harness.api.status().running, true);
+  assert.equal(harness.api.status().currentGroup.slug, 'paras');
+  assert.equal(harness.visualHuntSlug(), 'paras');
+  assert.deepEqual(socket.sent, [{ type: 'enter-hunt', slug: 'paras' }]);
 });
