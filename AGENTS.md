@@ -75,6 +75,7 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 - Sua única responsabilidade é escolher e alternar hunts diretas para completar a Pokédex. Nunca envia `catch`, escolhe balls, cura Pokémon ou interfere no Auto Catch.
 - O universo vem de `/game/creatures.json` combinado com `/api/game/map-markers`; espécies sem hunt direta são ignoradas e markers acima do nível de `/api/characters/me` ficam bloqueados.
 - Ordena espécies acessíveis pelo valor de venda ao NPC (`sellValue > 0`, com fallback para `priceNpc`), depois por nível da hunt e ID. Hunts compartilhadas permanecem ativas até que todas as espécies pendentes daquele slug sejam capturadas.
+- Variantes de hunt de Outland, Orre e Nightmare usam o `captureBase` do catálogo como ID canônico da Pokédex. Se várias hunts capturam a mesma espécie base, prefira a de menor nível; nunca espere o ID visual da variante.
 - `/api/game/pokedex` é uma resposta esparsa: presença com `caught: true` confirma captura; ausência não significa espécie inválida. Após sinal de captura, releia a Pokédex antes de avançar.
 - Ao concluir, permanece na última hunt. Pausar ou desinstalar também não envia `leave-hunt`.
 - Entrada e troca de hunt devem passar pelo marcador real do mapa (`data-guide="hunt-<slug>"`) e aguardar o `enter-hunt` emitido pelo próprio jogo. Enviar `enter-hunt` diretamente muda o servidor sem sincronizar a tela da SPA.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Auto Pokédex
 // @namespace    poke-manager
-// @version      1.1.1
+// @version      1.1.2
 // @description  Percorre automaticamente as hunts acessíveis até completar as capturas pendentes da Pokédex.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -903,9 +903,25 @@
     })[0];
   }
 
+  function getCanonicalSpeciesId(creature) {
+    return normalizePositiveInteger(creature?.captureBase)
+      || normalizePositiveInteger(creature?.pokeId);
+  }
+
+  function candidateIsBetter(next, current) {
+    if (!current) return true;
+    if (next.requiredLevel !== current.requiredLevel) {
+      return next.requiredLevel < current.requiredLevel;
+    }
+    if (next.canonicalSource !== current.canonicalSource) return next.canonicalSource;
+    return next.slug.localeCompare(current.slug) < 0;
+  }
+
   function buildCandidates(creatures, markers) {
     const creaturesByName = new Map();
+    const creaturesById = new Map();
     for (const creature of creatures) {
+      creaturesById.set(Number(creature.pokeId), creature);
       const key = normalizeName(creature.name);
       if (!key) continue;
       const entries = creaturesByName.get(key) || [];
@@ -923,17 +939,23 @@
         const matches = creaturesByName.get(normalizeName(name)) || [];
         const creature = chooseCreatureForMarker(matches, marker);
         if (!creature) continue;
-        const id = Number(creature.pokeId);
-        candidatesById.set(id, {
+        const id = getCanonicalSpeciesId(creature);
+        if (id == null) continue;
+        const canonicalCreature = creaturesById.get(id) || creature;
+        const candidate = {
           id,
-          name: String(creature.name || name),
+          name: String(canonicalCreature.name || creature.name || name),
           slug,
           requiredLevel: Math.max(1, Math.floor(Number(marker.level) || 1)),
-          price: getNpcSellValue(creature),
-        });
+          price: getNpcSellValue(canonicalCreature),
+          canonicalSource: Number(creature.pokeId) === id,
+        };
+        if (candidateIsBetter(candidate, candidatesById.get(id))) {
+          candidatesById.set(id, candidate);
+        }
       }
     }
-    return [...candidatesById.values()];
+    return [...candidatesById.values()].map(({ canonicalSource, ...candidate }) => candidate);
   }
 
   function compareTargets(a, b) {
@@ -946,6 +968,7 @@
 
   function buildPlan() {
     const mappedIds = new Set(state.allCandidates.map((candidate) => candidate.id));
+    const catalogSpeciesIds = new Set(state.creatures.map(getCanonicalSpeciesId).filter(Boolean));
     const remaining = state.allCandidates.filter((candidate) => !state.caughtIds.has(candidate.id));
     const accessible = remaining.filter((candidate) => (
       candidate.requiredLevel <= state.trainerLevel && !state.skippedIds.has(candidate.id)
@@ -969,7 +992,7 @@
       caught: state.allCandidates.filter((candidate) => state.caughtIds.has(candidate.id)).length,
       accessible: accessible.length,
       blocked: remaining.filter((candidate) => candidate.requiredLevel > state.trainerLevel).length,
-      withoutHunt: state.creatures.filter((creature) => !mappedIds.has(Number(creature.pokeId))).length,
+      withoutHunt: [...catalogSpeciesIds].filter((id) => !mappedIds.has(id)).length,
       skipped: remaining.filter((candidate) => state.skippedIds.has(candidate.id)).length,
     };
   }

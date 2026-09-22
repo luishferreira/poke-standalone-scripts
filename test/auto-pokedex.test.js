@@ -191,8 +191,8 @@ function createHarness({
   };
 }
 
-function creature(pokeId, name, sellValue, huntLevel = 1, priceNpc = 0) {
-  return { pokeId, name, sellValue, huntLevel, priceNpc };
+function creature(pokeId, name, sellValue, huntLevel = 1, priceNpc = 0, captureBase = null) {
+  return { pokeId, name, sellValue, huntLevel, priceNpc, captureBase };
 }
 
 function marker(slug, name, level = 1) {
@@ -312,11 +312,11 @@ test('mantém hunt compartilhada até capturar todas as espécies dela', async (
   assert.equal(harness.visualHuntSlug(), 'paras');
 });
 
-test('escolhe a variante cujo huntLevel corresponde ao marker duplicado', async () => {
+test('resolve o catálogo duplicado pelo huntLevel e usa o captureBase na Pokédex', async () => {
   const harness = createHarness({
     creatures: [
       creature(252, 'Treecko', 100, 20),
-      creature(13252, 'Treecko', 500, 550),
+      creature(13252, 'Treecko', 500, 550, 0, 252),
     ],
     markers: [marker('treecko', 'Treecko', 520)],
     level: 600,
@@ -325,7 +325,55 @@ test('escolhe a variante cujo huntLevel corresponde ao marker duplicado', async 
 
   await harness.api.start();
   await harness.settle();
-  assert.equal(harness.api.status().currentGroup.targets[0].id, 13252);
+  assert.equal(harness.api.status().currentGroup.targets[0].id, 252);
+});
+
+test('variantes de hunt usam captureBase e preferem a hunt normal de menor nível', async () => {
+  const harness = createHarness({
+    creatures: [
+      creature(91, 'Cloyster', 10_200, 60),
+      creature(10512, 'Evil Cloyster', 10_200, 150, 0, 91),
+    ],
+    markers: [
+      marker('cloyster', 'Cloyster', 60),
+      marker('evil_cloyster', 'Evil Cloyster', 150),
+    ],
+    level: 150,
+  });
+  harness.captureSocket();
+
+  await harness.api.start();
+  await harness.settle();
+  const target = harness.api.status().currentGroup.targets[0];
+  assert.equal(target.id, 91);
+  assert.equal(target.name, 'Cloyster');
+  assert.equal(harness.api.status().currentGroup.slug, 'cloyster');
+});
+
+test('captura da espécie base conclui uma hunt variante sem esperar o ID visual', async () => {
+  const harness = createHarness({
+    creatures: [
+      creature(91, 'Cloyster', 10_200, 60),
+      creature(10512, 'Evil Cloyster', 10_200, 150, 0, 91),
+    ],
+    markers: [marker('evil_cloyster', 'Evil Cloyster', 150)],
+    level: 150,
+  });
+  const socket = harness.captureSocket();
+
+  await harness.api.start();
+  await harness.settle();
+  assert.equal(harness.api.status().currentGroup.targets[0].id, 91);
+  assert.equal(harness.api.status().currentGroup.targets[0].name, 'Cloyster');
+
+  harness.setPokedex([{ id: 91, caught: true }]);
+  socket.emit('message', {
+    type: 'poke-delta',
+    poke: { speciesId: 91, xp: 0 },
+  });
+  await harness.tick(0);
+  assert.equal(harness.api.status().completed, true);
+  assert.equal(harness.api.status().capturedThisRun.includes(91), true);
 });
 
 test('pausar e concluir não abandonam a hunt atual', async () => {
