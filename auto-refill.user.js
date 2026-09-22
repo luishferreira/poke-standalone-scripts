@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Auto Refill
 // @namespace    poke-manager
-// @version      1.0.0
+// @version      1.1.0
 // @description  Reabastece potions e Pokébolas com limites configuráveis e venda opcional de loot comum.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -290,6 +290,184 @@
   if (isGameSocket(global.myGameSocket)) attachSocket(global.myGameSocket);
 })(window);
 
+// Shared module: src/shared/ui-menu.js
+(function installPiwUiMenu() {
+  'use strict';
+
+  const namespace = window.piwScripts = window.piwScripts || {};
+  if (namespace.uiMenu?.apiVersion === 1) return;
+
+  const SIDEBAR_ID = 'script-sidebar';
+  const GROUP_ID = 'piw-tools-sidebar-group';
+  const STYLE_ID = 'piw-tools-menu-styles';
+  const entries = new Map();
+  let observer = null;
+  let observerTimer = null;
+  let domReadyListenerInstalled = false;
+  let entriesDirty = false;
+
+  function installStyles() {
+    if (!document.documentElement || document.getElementById(STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = `
+      #${SIDEBAR_ID} {
+        position:fixed;left:8px;top:50%;transform:translateY(-50%);
+        display:flex;flex-direction:column;align-items:center;gap:6px;
+        padding:8px 6px;background:rgba(20,16,10,.85);
+        border:2px solid rgb(120,90,40);border-radius:10px;
+        z-index:9000;backdrop-filter:blur(4px);
+      }
+      #${GROUP_ID} { display:contents; }
+      #${GROUP_ID} .piw-tools-sidebar-item {
+        position:relative;
+        display:inline-flex;align-items:center;justify-content:center;
+        width:36px;height:36px;padding:0;background:transparent;border:0;
+        border-radius:8px;box-shadow:none;color:#e2e8f0;font-size:17px;
+        cursor:pointer;transition:background .15s;
+      }
+      #${GROUP_ID} .piw-tools-sidebar-item:hover,
+      #${GROUP_ID} .piw-tools-sidebar-item:focus-visible {
+        background:rgba(255,255,255,.12);
+        outline:none;
+      }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  function getOrCreateSidebar() {
+    let sidebar = document.getElementById(SIDEBAR_ID);
+    if (sidebar) return sidebar;
+    sidebar = document.createElement('div');
+    sidebar.id = SIDEBAR_ID;
+    sidebar.dataset.piwToolsHost = 'true';
+    document.body.appendChild(sidebar);
+    return sidebar;
+  }
+
+  function renderEntries(group) {
+    group.replaceChildren();
+    const sorted = [...entries.values()].sort((left, right) =>
+      left.order - right.order || left.label.localeCompare(right.label),
+    );
+    for (const entry of sorted) {
+      const item = document.createElement('button');
+      item.id = entry.id;
+      item.className = 'dock-btn piw-tools-sidebar-item';
+      item.type = 'button';
+      item.textContent = entry.icon;
+      item.title = entry.label;
+      item.setAttribute('aria-label', entry.label);
+      item.addEventListener('click', entry.onClick);
+      group.appendChild(item);
+      entry.onMount?.(item);
+    }
+  }
+
+  function createGroup(sidebar) {
+    const group = document.createElement('span');
+    group.id = GROUP_ID;
+    sidebar.appendChild(group);
+    return group;
+  }
+
+  function ensureMounted() {
+    if (!document.body || entries.size === 0) return;
+    installStyles();
+    const sidebar = getOrCreateSidebar();
+    let group = document.getElementById(GROUP_ID);
+    let created = false;
+    if (!group) {
+      group = createGroup(sidebar);
+      created = true;
+    }
+    else if (group.parentElement !== sidebar) sidebar.appendChild(group);
+    if (created || entriesDirty) {
+      renderEntries(group);
+      entriesDirty = false;
+    }
+  }
+
+  function scheduleMount() {
+    if (!document.body) {
+      if (!domReadyListenerInstalled) {
+        domReadyListenerInstalled = true;
+        document.addEventListener('DOMContentLoaded', () => {
+          domReadyListenerInstalled = false;
+          ensureMounted();
+          startObserver();
+        }, { once: true });
+      }
+      return;
+    }
+    if (observerTimer) return;
+    observerTimer = setTimeout(() => {
+      observerTimer = null;
+      ensureMounted();
+    }, 0);
+    startObserver();
+  }
+
+  function startObserver() {
+    if (observer || !document.body) return;
+    observer = new MutationObserver(() => {
+      if (document.getElementById(GROUP_ID) || entries.size === 0) return;
+      scheduleMount();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function removeEntry(id) {
+    if (!entries.delete(id)) return false;
+    document.getElementById(id)?.remove();
+    if (entries.size > 0) {
+      const group = document.getElementById(GROUP_ID);
+      if (group) renderEntries(group);
+      return true;
+    }
+    document.getElementById(GROUP_ID)?.remove();
+    const sidebar = document.getElementById(SIDEBAR_ID);
+    if (sidebar?.dataset.piwToolsHost === 'true' && sidebar.childElementCount === 0) sidebar.remove();
+    return true;
+  }
+
+  namespace.uiMenu = {
+    apiVersion: 1,
+    register({ id, label, icon = '•', order = 100, onClick, onMount = null }) {
+      if (!id || !label || typeof onClick !== 'function') {
+        throw new TypeError('Registro de menu inválido.');
+      }
+      entries.set(String(id), {
+        id: String(id),
+        label: String(label),
+        icon: String(icon),
+        order: Number.isFinite(Number(order)) ? Number(order) : 100,
+        onClick,
+        onMount: typeof onMount === 'function' ? onMount : null,
+      });
+      entriesDirty = true;
+      scheduleMount();
+      let active = true;
+      return () => {
+        if (!active) return false;
+        active = false;
+        return removeEntry(String(id));
+      };
+    },
+    refresh() {
+      ensureMounted();
+    },
+    status() {
+      return {
+        installed: true,
+        entries: [...entries.keys()],
+        mounted: Boolean(document.getElementById(GROUP_ID)),
+        sharedSidebar: Boolean(document.getElementById(SIDEBAR_ID)),
+      };
+    },
+  };
+})();
+
 (function installPiwAutoRefill() {
   'use strict';
 
@@ -299,8 +477,13 @@
   }
 
   const bridge = window.piwScripts?.wsBridge;
+  const uiMenu = window.piwScripts?.uiMenu;
   if (!bridge || bridge.apiVersion !== 1) {
     console.warn('[PIW Auto Refill] PIW WS Bridge v1 indisponível. Auto Refill não instalado.');
+    return;
+  }
+  if (!uiMenu || uiMenu.apiVersion !== 1) {
+    console.warn('[PIW Auto Refill] PIW UI Menu v1 indisponível. Auto Refill não instalado.');
     return;
   }
 
@@ -391,6 +574,7 @@
     lastResult: null,
   };
   let unsubscribeBridge = null;
+  let unregisterMenu = null;
   let interfaceObserver = null;
   let observerTimer = null;
 
@@ -988,22 +1172,21 @@
     renderPanel();
   }
 
-  function injectDockButton() {
-    const dock = document.querySelector('nav.game-dock');
-    if (!dock || dock.querySelector('#piw-auto-refill-button')) return;
-    const button = document.createElement('button');
-    button.id = 'piw-auto-refill-button';
-    button.className = 'dock-btn';
-    button.type = 'button';
-    button.textContent = '🧰';
-    button.title = 'Auto Refill';
-    button.addEventListener('click', () => {
-      const panel = document.querySelector('#piw-auto-refill-panel');
-      if (!panel) return;
-      panel.hidden = !panel.hidden;
-      renderPanel();
+  function registerSidebarButton() {
+    if (unregisterMenu) return;
+    unregisterMenu = uiMenu.register({
+      id: 'piw-auto-refill-button',
+      label: 'Auto Refill',
+      icon: '🧰',
+      order: 40,
+      onMount: renderPanel,
+      onClick() {
+        const panel = document.querySelector('#piw-auto-refill-panel');
+        if (!panel) return;
+        panel.hidden = !panel.hidden;
+        renderPanel();
+      },
     });
-    dock.appendChild(button);
     renderPanel();
   }
 
@@ -1011,14 +1194,14 @@
     if (!document.body) return;
     installStyles();
     createPanel();
-    injectDockButton();
+    registerSidebarButton();
     if (interfaceObserver) return;
     interfaceObserver = new MutationObserver(() => {
       if (observerTimer) return;
       observerTimer = setTimeout(() => {
         observerTimer = null;
         createPanel();
-        injectDockButton();
+        registerSidebarButton();
       }, 150);
     });
     interfaceObserver.observe(document.body, { childList: true, subtree: true });
@@ -1100,6 +1283,8 @@
       state.cycleTimer = null;
       unsubscribeBridge?.();
       unsubscribeBridge = null;
+      unregisterMenu?.();
+      unregisterMenu = null;
       interfaceObserver?.disconnect();
       interfaceObserver = null;
       if (observerTimer) clearTimeout(observerTimer);

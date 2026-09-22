@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Auto Refill
 // @namespace    poke-manager
-// @version      1.0.0
+// @version      1.1.0
 // @description  Reabastece potions e Pokébolas com limites configuráveis e venda opcional de loot comum.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -20,8 +20,13 @@
   }
 
   const bridge = window.piwScripts?.wsBridge;
+  const uiMenu = window.piwScripts?.uiMenu;
   if (!bridge || bridge.apiVersion !== 1) {
     console.warn('[PIW Auto Refill] PIW WS Bridge v1 indisponível. Auto Refill não instalado.');
+    return;
+  }
+  if (!uiMenu || uiMenu.apiVersion !== 1) {
+    console.warn('[PIW Auto Refill] PIW UI Menu v1 indisponível. Auto Refill não instalado.');
     return;
   }
 
@@ -112,6 +117,7 @@
     lastResult: null,
   };
   let unsubscribeBridge = null;
+  let unregisterMenu = null;
   let interfaceObserver = null;
   let observerTimer = null;
 
@@ -709,22 +715,21 @@
     renderPanel();
   }
 
-  function injectDockButton() {
-    const dock = document.querySelector('nav.game-dock');
-    if (!dock || dock.querySelector('#piw-auto-refill-button')) return;
-    const button = document.createElement('button');
-    button.id = 'piw-auto-refill-button';
-    button.className = 'dock-btn';
-    button.type = 'button';
-    button.textContent = '🧰';
-    button.title = 'Auto Refill';
-    button.addEventListener('click', () => {
-      const panel = document.querySelector('#piw-auto-refill-panel');
-      if (!panel) return;
-      panel.hidden = !panel.hidden;
-      renderPanel();
+  function registerSidebarButton() {
+    if (unregisterMenu) return;
+    unregisterMenu = uiMenu.register({
+      id: 'piw-auto-refill-button',
+      label: 'Auto Refill',
+      icon: '🧰',
+      order: 40,
+      onMount: renderPanel,
+      onClick() {
+        const panel = document.querySelector('#piw-auto-refill-panel');
+        if (!panel) return;
+        panel.hidden = !panel.hidden;
+        renderPanel();
+      },
     });
-    dock.appendChild(button);
     renderPanel();
   }
 
@@ -732,14 +737,14 @@
     if (!document.body) return;
     installStyles();
     createPanel();
-    injectDockButton();
+    registerSidebarButton();
     if (interfaceObserver) return;
     interfaceObserver = new MutationObserver(() => {
       if (observerTimer) return;
       observerTimer = setTimeout(() => {
         observerTimer = null;
         createPanel();
-        injectDockButton();
+        registerSidebarButton();
       }, 150);
     });
     interfaceObserver.observe(document.body, { childList: true, subtree: true });
@@ -821,6 +826,8 @@
       state.cycleTimer = null;
       unsubscribeBridge?.();
       unsubscribeBridge = null;
+      unregisterMenu?.();
+      unregisterMenu = null;
       interfaceObserver?.disconnect();
       interfaceObserver = null;
       if (observerTimer) clearTimeout(observerTimer);

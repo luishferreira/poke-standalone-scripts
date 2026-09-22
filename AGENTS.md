@@ -30,6 +30,7 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 - `autohelper` com catch normal ou shiny ativo e `catch-result` com `auto: true` indicam autocatch VIP. Nessa situação a captura manual é bloqueada e a interface alerta o usuário; um resultado automático nunca libera nem contabiliza o `inFlight` manual.
 - Pokébolas conhecidas: Poke Ball 1, Great Ball 2, Super Ball 3, Ultra Ball 4 e Idle Ball 6.
 - Configuração fica em `piw-auto-catch-settings-v1`; API de diagnóstico/controle fica em `window.piwAutoCatch`.
+- Registra o botão no `window.piwScripts.uiMenu`; não injeta mais controles em `nav.game-dock`.
 - O script somente recebe o tráfego normal do socket até o usuário ativar/usar o autocatch. Não adicione requests auxiliares desnecessários.
 
 ### `auto-reconnect.user.js`
@@ -42,11 +43,12 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 - Também pode sair e voltar quando um `field` contém Mega Sableye. Essa fuga é ativada por padrão, pode ser desligada no painel e persiste por aba.
 - Pausar preserva o contexto da hunt para que retomar volte a monitorá-la imediatamente. Um `leave-hunt` manual, inclusive durante a pausa, encerra o contexto e limpa o slug salvo; a saída interna de uma recuperação preserva o slug.
 - Configuração do slug fica em `piw_hunt_watchdog_v1`; API pública fica em `window.piwHuntWatchdog`.
+- Registra o botão no `window.piwScripts.uiMenu`; não injeta mais controles em `nav.game-dock`.
 
 ### `auto-boss.user.js`
 
 - Userscript de boss executado em `document-idle`.
-- Usa a API v1 de `window.piwScripts.wsBridge`, incorporada antes da feature pelo build. Mantém exatamente um subscriber durante toda a instalação e adiciona um painel no `nav.game-dock`.
+- Usa a API v1 de `window.piwScripts.wsBridge`, incorporada antes da feature pelo build. Mantém exatamente um subscriber durante toda a instalação e registra o painel no menu lateral compartilhado.
 - Entra no slug configurado, acompanha HP, vitórias, derrotas e até dez registros de loot.
 - `field.bossOutcome` é a única confirmação de término: `won` é vitória e qualquer outro valor truthy é derrota. `fainted` de Pokémon individuais não encerra a luta e não controla o lifecycle.
 - Após qualquer `bossOutcome`, sai, envia `joy-heal` fora da luta e então reentra ou conclui a parada agendada.
@@ -65,6 +67,7 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 - Venda de lixo é opcional e ocorre antes da consulta da loja. A ativação explícita da automação com essa opção marcada autoriza vender toda a quantidade de itens `loot` com `npcPrice` entre 1 e 4.000.
 - Usa `GET /api/game/shop`, `POST /api/game/shop/buy`, `POST /api/game/shop/sell`, `/game/items.json` e o refresh autenticado já observado. Nunca registre tokens nem o inventário completo.
 - Configuração fica em `piw-auto-refill-settings-v1`; API pública fica em `window.piwAutoRefill`.
+- Registra o botão no `window.piwScripts.uiMenu`; não injeta mais controles em `nav.game-dock`.
 
 ### `pokedream-auto-refill.user.js`
 
@@ -83,7 +86,7 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 
 ### `piw-qol.js` — referência externa somente leitura
 
-- Script grande de terceiros, atualmente PIW-QOL 10.1.0, autor Desjunior/JulianoCLI, com `@updateURL` e `@downloadURL` próprios.
+- Script grande de terceiros, atualmente PIW-QOL 10.1.1, autor Desjunior/JulianoCLI, com `@updateURL` e `@downloadURL` próprios.
 - Não pertence a este projeto e nunca deve ser modificado, formatado, versionado, empacotado ou distribuído por nossos agentes. Trate o arquivo como somente leitura, mesmo quando uma tarefa parece simples.
 - Pode ser consultado para entender como a página se comporta, descobrir seletores já conhecidos, observar uma abordagem de UX ou conferir coexistência. Reimplemente apenas o comportamento necessário no código próprio; não transforme o arquivo em fork e não copie blocos extensos.
 - Substitui `window.WebSocket` por um wrapper e também intercepta o `send` do WebSocket nativo.
@@ -124,6 +127,8 @@ Os quatro scripts próprios do Poke Idle World podem rodar na mesma página e o 
 
 O bridge por si só é passivo: instalar não abre conexão nem envia mensagens. Ele encadeia o construtor e o `send` encontrados, aceita wrapper externo antes ou depois, isola erros de subscribers e ignora mensagens do socket substituído. Atualmente é incorporado aos quatro userscripts do Poke Idle World; todos usam `subscribe` para lifecycle/mensagens e `sendJson` para seus envios, sem hooks próprios. Uma feature nunca deve chamar `bridge.uninstall()`; seu cleanup remove somente o próprio subscriber.
 
+`src/shared/ui-menu.js` implementa `window.piwScripts.uiMenu` v1. Os quatro scripts registram seus botões nele e removem somente o próprio registro no uninstall. O módulo reutiliza o `#script-sidebar` do PIW-QOL quando presente e cria uma sidebar equivalente quando ausente; essa coexistência é apenas pelo contêiner DOM, sem chamar funções internas nem acessar configurações do QOL. A ordem de carregamento deve funcionar nos dois sentidos.
+
 ## Estado e persistência no navegador
 
 - Os scripts próprios usam `sessionStorage` para manter preferências e histórico isolados por aba. Não volte a usar `localStorage` para slug, bola, contadores ou qualquer estado associado à conta aberta, pois ele é compartilhado por todas as abas da mesma origem.
@@ -146,7 +151,8 @@ O bridge por si só é passivo: instalar não abre conexão nem envia mensagens.
 ## Interface e DOM do jogo
 
 - O jogo é uma SPA e recria partes do DOM. Inserções precisam ser idempotentes e capazes de reaparecer após rerender.
-- O dock observado atualmente é `nav.game-dock`. Trate seletores do jogo como frágeis; tenha fallback seguro e falhe sem quebrar a página.
+- Os scripts próprios do PIW usam `#script-sidebar` por meio do `uiMenu`; não volte a injetar seus botões diretamente em `nav.game-dock`.
+- `#script-sidebar` pode ser criado pelo PIW-QOL ou pelo módulo próprio. Preserve filhos externos e remova somente o grupo `#piw-tools-sidebar-group` no cleanup.
 - IDs e classes injetados devem usar prefixo exclusivo da feature (`pac-`, `phw-`, `pba-`, `piw-...`). Não estilize tags/classes genéricas do jogo sem escopo.
 - Prefira `textContent` para texto vindo do jogo. Se for necessário construir HTML, passe nomes/loot/mensagens por uma função de escape; dados do servidor não são HTML confiável.
 - Use botões `type="button"`, labels claros, estado ativado/desativado visível e mensagens de erro que indiquem se falta socket, slug ou permissão.
@@ -189,7 +195,7 @@ Os arquivos canônicos ficam em `src`; os cinco `.user.js` da raiz são artefato
 
 ```text
 src/
-  shared/                 # reservado para módulos incorporados no build
+  shared/                 # ws-bridge e ui-menu incorporados no build
   auto-catch.js
   auto-reconnect.js
   auto-boss.js
@@ -211,7 +217,7 @@ Regras do build:
 - Edite somente a fonte correspondente em `src` e incremente ali o `@version`; nunca corrija diretamente um `.user.js` gerado.
 - Execute `npm run build` para regenerar os cinco artefatos. O output é determinístico e não contém timestamp.
 - `npm run build:check` não escreve arquivos e falha quando um artefato está ausente ou difere da fonte.
-- Módulos da lista global `shared` são incorporados antes de todas as features; cada entrada também pode declarar sua própria lista para rollout gradual. O bridge está nas entradas dos quatro userscripts do Poke Idle World.
+- Módulos da lista global `shared` são incorporados antes de todas as features; cada entrada também pode declarar sua própria lista para rollout gradual. `ws-bridge.js` e `ui-menu.js` estão nas entradas dos quatro userscripts do Poke Idle World.
 - O arquivo entregue ao Tampermonkey deve continuar sendo um único userscript autocontido; não introduza `@require` nem outro userscript obrigatório.
 - O bloco `// ==UserScript==` deve ser o primeiro conteúdo do artefato e preservar `@name`, `@namespace`, `@match`, `@grant` e `@run-at` corretos.
 - Não introduza framework/bundler pesado sem necessidade. O build atual usa somente módulos nativos do Node.js.

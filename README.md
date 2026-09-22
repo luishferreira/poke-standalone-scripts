@@ -51,7 +51,9 @@ git config core.hooksPath .githooks
 
 Antes de cada commit, ele executa `npm run verify`, exige que fontes e artefatos gerados sejam adicionados juntos e valida o incremento de `@version` dos userscripts alterados. A mesma checagem pode ser executada manualmente com `npm run check:commit`.
 
-O build aceita módulos compartilhados globais ou por userscript em `scripts/userscripts.config.js`. Atualmente o WebSocket bridge é incorporado aos quatro userscripts. Cada feature mantém um subscriber persistente para lifecycle/mensagens e envia pelo próprio bridge; a contagem de diagnóstico corresponde à quantidade de features instaladas na aba.
+O build aceita módulos compartilhados globais ou por userscript em `scripts/userscripts.config.js`. Atualmente os bridges de WebSocket e interface são incorporados aos quatro userscripts do Poke Idle World. Cada feature mantém um subscriber persistente para lifecycle/mensagens e envia pelo próprio bridge; a contagem de diagnóstico corresponde à quantidade de features instaladas na aba.
+
+Auto Catch, Auto Reconnect, Auto Boss e Auto Refill aparecem numa barra lateral compartilhada. Quando o PIW-QOL está instalado, os botões entram na mesma barra lateral dele; sem o PIW-QOL, os próprios scripts criam uma barra visualmente equivalente. A integração é apenas de interface: nenhuma automação depende do QOL para funcionar.
 
 O Auto Refill inicia pausado. No painel, escolha potion e ball, configure threshold, quantidade e reserva de gold e então ative. A venda automática de loot comum é opcional e vende itens de NPC dentro da regra indicada na interface.
 

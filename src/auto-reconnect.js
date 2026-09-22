@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Auto reconnect
 // @namespace    http://tampermonkey.net/
-// @version      2026-08-20.7
+// @version      2026-09-21.1
 // @description  auto reconecta e pula mega sableye
 // @author       Luis
 // @match        https://poke.idleworld.online/play
@@ -23,8 +23,13 @@
   }
 
   const bridge = window.piwScripts?.wsBridge;
+  const uiMenu = window.piwScripts?.uiMenu;
   if (!bridge || bridge.apiVersion !== 1) {
     console.warn('[Hunt Watchdog] PIW WS Bridge v1 indisponível. Watchdog não instalado.');
+    return;
+  }
+  if (!uiMenu || uiMenu.apiVersion !== 1) {
+    console.warn('[Hunt Watchdog] PIW UI Menu v1 indisponível. Watchdog não instalado.');
     return;
   }
 
@@ -57,6 +62,7 @@
     skipMegaSableye: saved.skipMegaSableye !== false,
   };
   let unsubscribeBridge = null;
+  let unregisterMenu = null;
 
   function readSavedState() {
     try {
@@ -183,35 +189,35 @@
     });
   }
 
-  function injectDockButton() {
-    const dock = document.querySelector('nav.game-dock');
-    if (!dock || dock.querySelector('#piw-hunt-watchdog-button')) return;
-    const button = document.createElement('button');
-    button.id = 'piw-hunt-watchdog-button';
-    button.className = 'dock-btn';
-    button.type = 'button';
-    button.textContent = '📡';
-    button.title = 'Hunt Watchdog';
-    button.addEventListener('click', () => {
-      const panel = document.querySelector('#piw-hunt-watchdog-panel');
-      panel.hidden = !panel.hidden;
-      renderPanel();
+  function registerSidebarButton() {
+    if (unregisterMenu) return;
+    unregisterMenu = uiMenu.register({
+      id: 'piw-hunt-watchdog-button',
+      label: 'Auto Reconnect',
+      icon: '📡',
+      order: 20,
+      onMount: renderPanel,
+      onClick() {
+        const panel = document.querySelector('#piw-hunt-watchdog-panel');
+        if (!panel) return;
+        panel.hidden = !panel.hidden;
+        renderPanel();
+      },
     });
-    dock.appendChild(button);
     renderPanel();
   }
 
   function installInterface() {
     installPanelStyles();
     createPanel();
-    injectDockButton();
+    registerSidebarButton();
     let observerPending = false;
     const observer = new MutationObserver(() => {
       if (observerPending) return;
       observerPending = true;
       setTimeout(() => {
         observerPending = false;
-        injectDockButton();
+        registerSidebarButton();
       }, 150);
     });
     observer.observe(document.body, { childList: true, subtree: true });
@@ -372,6 +378,8 @@
       interfaceObserver?.disconnect();
       unsubscribeBridge?.();
       unsubscribeBridge = null;
+      unregisterMenu?.();
+      unregisterMenu = null;
       state.enabled = false;
       document.querySelector('#piw-hunt-watchdog-panel')?.remove();
       document.querySelector('#piw-hunt-watchdog-button')?.remove();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Auto Catch
 // @namespace    poke-manager
-// @version      1.5.1
+// @version      1.6.0
 // @description  Captura automaticamente os Pokémon pendentes usando o WebSocket do jogo.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -20,8 +20,13 @@
   }
 
   const bridge = window.piwScripts?.wsBridge;
+  const uiMenu = window.piwScripts?.uiMenu;
   if (!bridge || bridge.apiVersion !== 1) {
     console.warn('[PIW Auto Catch] PIW WS Bridge v1 indisponível. Auto Catch não instalado.');
+    return;
+  }
+  if (!uiMenu || uiMenu.apiVersion !== 1) {
+    console.warn('[PIW Auto Catch] PIW UI Menu v1 indisponível. Auto Catch não instalado.');
     return;
   }
 
@@ -93,6 +98,7 @@
   };
   let interfaceObserver = null;
   let unsubscribeBridge = null;
+  let unregisterMenu = null;
 
   function saveSettings() {
     try {
@@ -253,21 +259,21 @@
     renderPanel();
   }
 
-  function injectDockButton() {
-    const dock = document.querySelector('nav.game-dock');
-    if (!dock || dock.querySelector('#piw-auto-catch-button')) return;
-    const button = document.createElement('button');
-    button.id = 'piw-auto-catch-button';
-    button.className = 'dock-btn';
-    button.type = 'button';
-    button.textContent = '🎯';
-    button.addEventListener('click', () => {
-      const panel = document.querySelector('#piw-auto-catch-panel');
-      if (!panel) return;
-      panel.hidden = !panel.hidden;
-      renderPanel();
+  function registerSidebarButton() {
+    if (unregisterMenu) return;
+    unregisterMenu = uiMenu.register({
+      id: 'piw-auto-catch-button',
+      label: 'Auto Catch',
+      icon: '🎯',
+      order: 10,
+      onMount: renderPanel,
+      onClick() {
+        const panel = document.querySelector('#piw-auto-catch-panel');
+        if (!panel) return;
+        panel.hidden = !panel.hidden;
+        renderPanel();
+      },
     });
-    dock.appendChild(button);
     renderPanel();
   }
 
@@ -278,11 +284,11 @@
     }
     installPanelStyles();
     createPanel();
-    injectDockButton();
+    registerSidebarButton();
     if (interfaceObserver || !document.documentElement) return;
     interfaceObserver = new MutationObserver(() => {
       createPanel();
-      injectDockButton();
+      registerSidebarButton();
     });
     interfaceObserver.observe(document.documentElement, { childList: true, subtree: true });
   }
@@ -694,6 +700,8 @@
       this.stop();
       unsubscribeBridge?.();
       unsubscribeBridge = null;
+      unregisterMenu?.();
+      unregisterMenu = null;
       interfaceObserver?.disconnect();
       clearBallsRequestTimer();
       document.querySelector('#piw-auto-catch-panel')?.remove();

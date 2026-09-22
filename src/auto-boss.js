@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Auto Boss Farmer PIW
-// @version      1.3.0
+// @version      1.4.0
 // @description  Painel para farmar Bosses com HUD, cura entre lutas e parada agendada.
 // @author       Luis
 // @match        https://poke.idleworld.online/play
@@ -16,8 +16,13 @@
     if (window.piwBossFarm?.installed || window.piwBossFarmInjected) return;
 
     const bridge = window.piwScripts?.wsBridge;
+    const uiMenu = window.piwScripts?.uiMenu;
     if (!bridge || bridge.apiVersion !== 1) {
         console.warn('[PIW Auto Boss] PIW WS Bridge v1 indisponível. Auto Boss não instalado.');
+        return;
+    }
+    if (!uiMenu || uiMenu.apiVersion !== 1) {
+        console.warn('[PIW Auto Boss] PIW UI Menu v1 indisponível. Auto Boss não instalado.');
         return;
     }
 
@@ -37,6 +42,7 @@
     let watchdogTimer = null;
     let interfaceObserver = null;
     let observerTimer = null;
+    let unregisterMenu = null;
     let unsubscribeBridge = null;
 
     function blankState() {
@@ -447,22 +453,21 @@
         renderPanel();
     }
 
-    function injectDockButton() {
-        const dock = document.querySelector('nav.game-dock');
-        if (!dock || dock.querySelector('#piw-boss-route-button')) return;
-        const button = document.createElement('button');
-        button.id = 'piw-boss-route-button';
-        button.className = 'dock-btn';
-        button.type = 'button';
-        button.textContent = '☠️';
-        button.title = 'Auto Boss Farm';
-        button.addEventListener('click', () => {
-            const panel = document.querySelector('#piw-boss-panel');
-            if (!panel) return;
-            panel.hidden = !panel.hidden;
-            if (!panel.hidden) renderPanel();
+    function registerSidebarButton() {
+        if (unregisterMenu) return;
+        unregisterMenu = uiMenu.register({
+            id: 'piw-boss-route-button',
+            label: 'Auto Boss',
+            icon: '☠️',
+            order: 30,
+            onMount: renderPanel,
+            onClick() {
+                const panel = document.querySelector('#piw-boss-panel');
+                if (!panel) return;
+                panel.hidden = !panel.hidden;
+                if (!panel.hidden) renderPanel();
+            }
         });
-        dock.appendChild(button);
         renderPanel();
     }
 
@@ -508,14 +513,14 @@
         if (!document.body) return;
         installStyles();
         createPanel();
-        injectDockButton();
+        registerSidebarButton();
         if (interfaceObserver) return;
         interfaceObserver = new MutationObserver(() => {
             if (observerTimer) return;
             observerTimer = setTimeout(() => {
                 observerTimer = null;
                 createPanel();
-                injectDockButton();
+                registerSidebarButton();
             }, 150);
         });
         interfaceObserver.observe(document.body, { childList: true, subtree: true });
@@ -529,6 +534,8 @@
         saveState();
         unsubscribeBridge?.();
         unsubscribeBridge = null;
+        unregisterMenu?.();
+        unregisterMenu = null;
         gameSocket = null;
         interfaceObserver?.disconnect();
         interfaceObserver = null;

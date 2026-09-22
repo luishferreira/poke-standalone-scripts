@@ -8,22 +8,22 @@ module.exports = {
     {
       input: 'src/auto-catch.js',
       output: 'auto-catch.user.js',
-      shared: ['src/shared/ws-bridge.js'],
+      shared: ['src/shared/ws-bridge.js', 'src/shared/ui-menu.js'],
     },
     {
       input: 'src/auto-boss.js',
       output: 'auto-boss.user.js',
-      shared: ['src/shared/ws-bridge.js'],
+      shared: ['src/shared/ws-bridge.js', 'src/shared/ui-menu.js'],
     },
     {
       input: 'src/auto-reconnect.js',
       output: 'auto-reconnect.user.js',
-      shared: ['src/shared/ws-bridge.js'],
+      shared: ['src/shared/ws-bridge.js', 'src/shared/ui-menu.js'],
     },
     {
       input: 'src/auto-refill.js',
       output: 'auto-refill.user.js',
-      shared: ['src/shared/ws-bridge.js'],
+      shared: ['src/shared/ws-bridge.js', 'src/shared/ui-menu.js'],
     },
     {
       input: 'src/pokedream-auto-refill.js',

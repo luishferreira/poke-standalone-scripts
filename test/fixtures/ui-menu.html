@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PIW UI Menu fixture</title>
+  <style>
+    html, body { min-height: 100%; margin: 0; }
+    body { background: radial-gradient(circle at 50% 30%, #183247, #081018 70%); color: #e2e8f0; font-family: system-ui, sans-serif; }
+    main { width: min(520px, 80vw); margin: 15vh auto; padding: 24px; background: #0c161f; border: 1px solid #315269; border-radius: 12px; }
+    #dock-btn-quick-tp, #dock-btn-shops, #dock-btn-depot {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; padding: 0; background: transparent;
+      border: 0; border-radius: 8px; color: #e2e8f0; font-size: 17px; cursor: pointer;
+    }
+    #dock-btn-quick-tp:hover, #dock-btn-shops:hover, #dock-btn-depot:hover { background: rgba(255,255,255,.12); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Fixture do menu lateral</h1>
+    <p id="mode"></p>
+    <p id="result">Clique em um ícone para validar a entrada.</p>
+  </main>
+  <script>
+    const withQol = new URLSearchParams(location.search).has('qol');
+    document.querySelector('#mode').textContent = withQol
+      ? 'Modo: sidebar preexistente do PIW-QOL.'
+      : 'Modo: sidebar criada pelos scripts standalone.';
+    if (withQol) {
+      const sidebar = document.createElement('div');
+      sidebar.id = 'script-sidebar';
+      sidebar.innerHTML = `
+        <button id="dock-btn-quick-tp" type="button" title="Teleporte">★</button>
+        <button id="dock-btn-shops" type="button" title="Lojas">🏪</button>
+        <button id="dock-btn-depot" type="button" title="Depot">📦</button>`;
+      document.body.appendChild(sidebar);
+    }
+  </script>
+  <script src="../../src/shared/ui-menu.js"></script>
+  <script>
+    const result = document.querySelector('#result');
+    [
+      ['piw-auto-catch-button', 'Auto Catch', '🎯', 10],
+      ['piw-hunt-watchdog-button', 'Auto Reconnect', '📡', 20],
+      ['piw-boss-route-button', 'Auto Boss', '☠️', 30],
+      ['piw-auto-refill-button', 'Auto Refill', '🧰', 40],
+    ].forEach(([id, label, icon, order]) => {
+      window.piwScripts.uiMenu.register({
+        id, label, icon, order,
+        onClick() { result.textContent = `${label} abriu o painel.`; },
+      });
+    });
+  </script>
+</body>
+</html>
