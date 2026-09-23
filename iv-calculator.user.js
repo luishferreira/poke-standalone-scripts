@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW IV Calculator
 // @namespace    poke-manager
-// @version      1.0.0
+// @version      1.0.1
 // @description  Calcula os IVs dos Pokémon atualmente equipados no Poke Idle World.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -995,9 +995,6 @@
     menuButton?.classList.toggle('piv-loading', state.loading);
     if (!panel) return;
 
-    const status = panel.querySelector('[data-piv="status"]');
-    status.textContent = state.lastMessage;
-    status.classList.toggle('piv-error', state.lastError);
     const selector = panel.querySelector('[data-piv="pokemon"]');
     renderSelector(selector);
 
@@ -1031,7 +1028,6 @@
     panel.innerHTML = `
       <header><span>🧬 Calculadora de IVs</span><button class="piv-close" type="button">×</button></header>
       <div class="piv-body">
-        <div class="piv-status" data-piv="status"></div>
         <label class="piv-selector">Pokémon da equipe
           <select data-piv="pokemon"><option>Nenhum Pokémon carregado</option></select>
         </label>
@@ -1039,7 +1035,7 @@
           <span><small>Nível</small><b data-piv="level">—</b></span>
           <span><small>Quality</small><b data-piv="quality">—</b></span>
           <span><small>Total</small><b data-piv="total">—</b></span>
-          <span><small>Aproveitamento</small><b data-piv="percent">—</b></span>
+          <span><small>Potencial</small><b data-piv="percent">—</b></span>
         </div>
         <div class="piv-stats">
           ${STAT_DEFINITIONS.map((definition) => `
@@ -1100,8 +1096,6 @@
       #piw-iv-calculator-panel button:disabled { cursor:not-allowed;opacity:.5; }
       #piw-iv-calculator-panel .piv-close { width:29px;height:29px;padding:0;background:#23303a;font-size:19px; }
       #piw-iv-calculator-panel .piv-body { padding:11px; }
-      #piw-iv-calculator-panel .piv-status { color:#90cdf4;background:#0a1219;border-radius:6px;padding:7px 9px;margin-bottom:9px;text-align:center;font-weight:700; }
-      #piw-iv-calculator-panel .piv-status.piv-error { color:#feb2b2; }
       #piw-iv-calculator-panel .piv-selector { display:grid;gap:4px;color:#718096;font-size:10px;font-weight:800;text-transform:uppercase; }
       #piw-iv-calculator-panel select { width:100%;border:1px solid #315269;border-radius:6px;background:#101f2a;color:#e2e8f0;padding:8px;font:600 13px system-ui,sans-serif;text-transform:none; }
       #piw-iv-calculator-panel .piv-summary { display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin:9px 0; }

@@ -271,6 +271,70 @@ test('usa Tackle físico de poder 40 quando o selvagem só possui TM', () => {
   assert.equal(recommendation.lethal, true);
 });
 
+test('aplica o bônus de XP do Tipo do Dia somente às hunts do tipo correspondente', () => {
+  const data = fixtures();
+  const harness = createHarness();
+  const base = harness.api.calculate({
+    leader: data.leader,
+    profile: { character: { level: 100 } },
+    creatures: data.creatures,
+    markers: data.markers,
+  });
+  const boosted = harness.api.calculate({
+    leader: data.leader,
+    profile: { character: { level: 100 } },
+    creatures: data.creatures,
+    markers: data.markers,
+    typeOfDay: { type: 'GRASS', label: 'Planta', emoji: '🌿', xpPercent: 20 },
+  });
+  const baseLeafling = base.recommendations.find((entry) => entry.slug === 'leafling');
+  const boostedLeafling = boosted.recommendations.find((entry) => entry.slug === 'leafling');
+  const baseAquabeast = base.recommendations.find((entry) => entry.slug === 'aquabeast');
+  const boostedAquabeast = boosted.recommendations.find((entry) => entry.slug === 'aquabeast');
+
+  assert.ok(Math.abs(boostedLeafling.xpPerHour / baseLeafling.xpPerHour - 1.2) < 1e-9);
+  assert.equal(boostedLeafling.typeOfDayApplied, true);
+  assert.equal(boostedAquabeast.xpPerHour, baseAquabeast.xpPerHour);
+  assert.equal(boostedAquabeast.typeOfDayApplied, false);
+});
+
+test('ordena somente por XP/h mesmo quando a melhor hunt é letal', () => {
+  const data = fixtures();
+  const safeWild = creature({
+    pokeId: 5,
+    name: 'Safe Wild',
+    type1: 'GRASS',
+    baseHp: 1,
+    baseDef: 1,
+    experience: 1,
+    attacks: [move('Tackle', 40, 'NORMAL', 'PHYSICAL')],
+  });
+  const lethalWild = creature({
+    pokeId: 6,
+    name: 'Lethal Wild',
+    type1: 'WATER',
+    baseHp: 1_000,
+    baseDef: 1_000,
+    experience: 100_000,
+    attacks: [move('Tackle', 40, 'NORMAL', 'PHYSICAL')],
+  });
+  const harness = createHarness();
+  const result = harness.api.calculate({
+    leader: { ...data.leader, maxHp: 1 },
+    profile: { character: { level: 100 } },
+    creatures: [...data.creatures, safeWild, lethalWild],
+    markers: [
+      marker('safe', 'Safe Wild', 1),
+      marker('lethal', 'Lethal Wild', 100),
+    ],
+  });
+
+  assert.equal(result.recommendations[0].slug, 'lethal');
+  assert.equal(result.recommendations[0].lethal, true);
+  assert.equal(result.recommendations[1].slug, 'safe');
+  assert.equal(result.recommendations[1].lethal, false);
+});
+
 test('análise solicita pokes-get, usa respostas oficiais e permanece somente leitura', async () => {
   const data = fixtures();
   const harness = createHarness({
@@ -281,16 +345,34 @@ test('análise solicita pokes-get, usa respostas oficiais e permanece somente le
   const socket = harness.captureSocket();
   const analysis = harness.api.analyze();
 
-  assert.deepEqual(socket.sent, [{ type: 'pokes-get' }]);
+  assert.deepEqual(socket.sent, [{ type: 'pokes-get' }, { type: 'boosts-refresh' }]);
   socket.emit('message', { type: 'pokes', list: [data.leader] });
+  socket.emit('message', {
+    type: 'events',
+    events: [{
+      key: 'type-of-day',
+      name: '❄️ Tipo do Dia: Gelo',
+      desc: '+20% de XP e +20% de loot em Pokémon do tipo Gelo',
+      pct: 0,
+      emoji: '❄️',
+      until: 4_000_000_000_000,
+    }],
+  });
   assert.equal(await analysis, true);
-  assert.deepEqual(socket.sent, [{ type: 'pokes-get' }]);
+  assert.deepEqual(socket.sent, [{ type: 'pokes-get' }, { type: 'boosts-refresh' }]);
   assert.deepEqual(harness.requests.sort(), [
     '/api/characters/me',
     '/api/game/map-markers',
     '/game/creatures.json',
   ].sort());
   assert.equal(harness.api.status().results.length, 2);
+  assert.deepEqual(plain(harness.api.status().typeOfDay), {
+    type: 'ICE',
+    label: 'Gelo',
+    emoji: '❄️',
+    xpPercent: 20,
+    until: 4_000_000_000_000,
+  });
 });
 
 test('recusa Ditto nesta primeira versão', () => {

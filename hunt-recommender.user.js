@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Hunt Recommender
 // @namespace    poke-manager
-// @version      1.0.2
+// @version      1.0.5
 // @description  Analisa o Pokémon equipado e indica as melhores hunts acessíveis por XP/h.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -711,6 +711,44 @@
     category: 'PHYSICAL',
     learnLevel: 1,
   });
+  const TYPE_OF_DAY_LABELS = Object.freeze({
+    aco: 'STEEL',
+    agua: 'WATER',
+    dragao: 'DRAGON',
+    eletrico: 'ELECTRIC',
+    fada: 'FAIRY',
+    fantasma: 'GHOST',
+    fogo: 'FIRE',
+    gelo: 'ICE',
+    inseto: 'BUG',
+    lutador: 'FIGHTING',
+    normal: 'NORMAL',
+    pedra: 'ROCK',
+    planta: 'GRASS',
+    grama: 'GRASS',
+    psiquico: 'PSYCHIC',
+    sombrio: 'DARK',
+    terra: 'GROUND',
+    veneno: 'POISON',
+    voador: 'FLYING',
+    steel: 'STEEL',
+    water: 'WATER',
+    dragon: 'DRAGON',
+    electric: 'ELECTRIC',
+    fairy: 'FAIRY',
+    ghost: 'GHOST',
+    fire: 'FIRE',
+    ice: 'ICE',
+    bug: 'BUG',
+    fighting: 'FIGHTING',
+    rock: 'ROCK',
+    grass: 'GRASS',
+    psychic: 'PSYCHIC',
+    dark: 'DARK',
+    ground: 'GROUND',
+    poison: 'POISON',
+    flying: 'FLYING',
+  });
 
   const CLAN_TYPES = Object.freeze({
     ironhard: ['STEEL'],
@@ -759,6 +797,9 @@
     lastMessage: 'Clique em analisar para calcular as melhores hunts.',
     lastError: false,
     pokesWaiter: null,
+    boostsWaiter: null,
+    boostsLoaded: false,
+    typeOfDay: null,
   };
 
   let unsubscribeBridge = null;
@@ -778,6 +819,33 @@
 
   function normalizeType(value) {
     return String(value || '').trim().toUpperCase();
+  }
+
+  function normalizeLabel(value) {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z]/g, '');
+  }
+
+  function parseTypeOfDay(events, now = Date.now()) {
+    if (!Array.isArray(events)) return null;
+    const event = events.find((entry) => entry?.key === 'type-of-day');
+    if (!event) return null;
+    const until = finiteNumber(event.until);
+    if (until !== null && until <= now) return null;
+    const name = String(event.name || '');
+    const label = name.includes(':') ? name.slice(name.lastIndexOf(':') + 1).trim() : '';
+    const xpMatch = String(event.desc || '').match(/\+(\d+(?:[.,]\d+)?)%\s+de\s+XP/i);
+    const xpPercent = xpMatch ? Number(xpMatch[1].replace(',', '.')) : 0;
+    return {
+      type: TYPE_OF_DAY_LABELS[normalizeLabel(label)] || null,
+      label: label || 'Desconhecido',
+      emoji: String(event.emoji || ''),
+      xpPercent: Number.isFinite(xpPercent) ? xpPercent : 0,
+      until,
+    };
   }
 
   function finiteNumber(value, fallback = null) {
@@ -986,7 +1054,13 @@
     return bySlug[0] || null;
   }
 
-  function calculateRecommendations({ leader, profile, creatures: rawCreatures, markers: rawMarkers }) {
+  function calculateRecommendations({
+    leader,
+    profile,
+    creatures: rawCreatures,
+    markers: rawMarkers,
+    typeOfDay = null,
+  }) {
     if (!leader?.stats) throw new Error('O Pokémon equipado não possui atributos completos.');
     const creatures = normalizeCreatures(rawCreatures);
     const markers = normalizeMarkers(rawMarkers);
@@ -1032,7 +1106,14 @@
       const cycleMs = overheadMs + Math.max(0, hits - 1) * PLAYER_ATTACK_INTERVAL_MS;
       const kosPerHour = 3_600_000 / cycleMs;
       const xpPerKill = Math.max(0, Number(wild.experience) || 0);
-      const xpPerHour = kosPerHour * xpPerKill;
+      const baseXpPerHour = kosPerHour * xpPerKill;
+      const typeOfDayApplied = Boolean(
+        typeOfDay?.type
+        && Number(typeOfDay.xpPercent) > 0
+        && getCreatureTypes(wild).includes(typeOfDay.type)
+      );
+      const xpMultiplier = typeOfDayApplied ? 1 + Number(typeOfDay.xpPercent) / 100 : 1;
+      const xpPerHour = baseXpPerHour * xpMultiplier;
 
       const unlockedWildMoves = getUnlockedMoves(wild, marker.level);
       const wildMoves = (unlockedWildMoves.length ? unlockedWildMoves : [WILD_FALLBACK_MOVE])
@@ -1059,6 +1140,9 @@
         hits,
         kosPerHour,
         xpPerKill,
+        baseXpPerHour,
+        xpMultiplier,
+        typeOfDayApplied,
         xpPerHour,
         lethal,
         incomingHits,
@@ -1068,8 +1152,7 @@
     }
 
     recommendations.sort((a, b) => (
-      Number(a.lethal) - Number(b.lethal)
-      || b.xpPerHour - a.xpPerHour
+      b.xpPerHour - a.xpPerHour
       || a.requiredLevel - b.requiredLevel
       || a.slug.localeCompare(b.slug)
     ));
@@ -1082,6 +1165,7 @@
       },
       character,
       clanMultiplier,
+      typeOfDay: typeOfDay ? { ...typeOfDay } : null,
       recommendations,
     };
   }
@@ -1117,6 +1201,37 @@
     });
   }
 
+  function clearBoostsWaiter(error = null) {
+    const waiter = state.boostsWaiter;
+    if (!waiter) return;
+    clearTimeout(waiter.timer);
+    state.boostsWaiter = null;
+    if (error) waiter.reject(error);
+  }
+
+  function resolveBoostsWaiter(typeOfDay) {
+    const waiter = state.boostsWaiter;
+    if (!waiter) return;
+    clearTimeout(waiter.timer);
+    state.boostsWaiter = null;
+    waiter.resolve(typeOfDay);
+  }
+
+  function requestFreshBoosts() {
+    clearBoostsWaiter(new Error('Solicitação anterior de eventos substituída.'));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (state.boostsWaiter?.timer !== timer) return;
+        state.boostsWaiter = null;
+        reject(new Error('O jogo não respondeu com os eventos ativos.'));
+      }, POKES_TIMEOUT_MS);
+      state.boostsWaiter = { timer, resolve, reject };
+      if (!bridge.sendJson({ type: 'boosts-refresh' })) {
+        clearBoostsWaiter(new Error('Não foi possível solicitar os eventos pelo WebSocket.'));
+      }
+    });
+  }
+
   async function loadCatalogs() {
     if (state.creatures.length && state.markers.length) return;
     const [creaturesPayload, markersPayload] = await Promise.all([
@@ -1144,8 +1259,9 @@
     state.loading = true;
     setMessage('Lendo Pokémon, perfil e hunts...');
     try {
-      const [pokes, profile] = await Promise.all([
+      const [pokes, typeOfDay, profile] = await Promise.all([
         requestFreshPokes(),
+        requestFreshBoosts(),
         gameApiRequest(CHARACTER_URL),
         loadCatalogs(),
       ]);
@@ -1158,6 +1274,7 @@
         profile,
         creatures: state.creatures,
         markers: state.markers,
+        typeOfDay,
       });
       state.leader = leader;
       state.character = calculated.character;
@@ -1179,14 +1296,27 @@
   }
 
   function handleIncoming(message) {
-    if (message?.type !== 'pokes' || !Array.isArray(message.list)) return;
-    state.latestPokes = message.list;
-    resolvePokesWaiter(message.list);
+    if (message?.type === 'pokes' && Array.isArray(message.list)) {
+      state.latestPokes = message.list;
+      resolvePokesWaiter(message.list);
+      return;
+    }
+    if (message?.type === 'events' && Array.isArray(message.events)) {
+      state.typeOfDay = parseTypeOfDay(message.events);
+      state.boostsLoaded = true;
+      resolveBoostsWaiter(state.typeOfDay);
+      renderPanel();
+    }
   }
 
   function adoptSocket(socket) {
     if (!socket || state.socket === socket) return;
-    if (state.socket && state.socket !== socket) clearPokesWaiter(new Error('WebSocket substituído.'));
+    if (state.socket && state.socket !== socket) {
+      clearPokesWaiter(new Error('WebSocket substituído.'));
+      clearBoostsWaiter(new Error('WebSocket substituído.'));
+      state.boostsLoaded = false;
+      state.typeOfDay = null;
+    }
     state.socket = socket;
     renderPanel();
   }
@@ -1204,6 +1334,9 @@
       if (state.socket !== event.socket) return;
       state.socket = null;
       clearPokesWaiter(new Error('WebSocket desconectado.'));
+      clearBoostsWaiter(new Error('WebSocket desconectado.'));
+      state.boostsLoaded = false;
+      state.typeOfDay = null;
       renderPanel();
     },
     incoming(event) {
@@ -1219,6 +1352,7 @@
       socketOpen: state.socket?.readyState === WebSocket.OPEN,
       leader: state.leader ? { name: state.leader.name, level: state.leader.level } : null,
       trainerLevel: state.character?.level ?? null,
+      typeOfDay: state.typeOfDay ? { ...state.typeOfDay } : null,
       results: state.results.map((result) => ({ ...result })),
       best: best ? { ...best } : null,
       message: state.lastMessage,
@@ -1243,11 +1377,21 @@
 
       const hunt = document.createElement('div');
       hunt.className = 'phr-hunt';
+      const nameLine = document.createElement('div');
+      nameLine.className = 'phr-hunt-name';
       const name = document.createElement('strong');
       name.textContent = result.name;
+      nameLine.appendChild(name);
+      if (result.typeOfDayApplied) {
+        const typeOfDayBadge = document.createElement('span');
+        typeOfDayBadge.className = 'phr-type-day';
+        typeOfDayBadge.textContent = state.typeOfDay?.emoji || '✨';
+        typeOfDayBadge.title = `Tipo do Dia: +${state.typeOfDay?.xpPercent || 0}% de XP`;
+        nameLine.appendChild(typeOfDayBadge);
+      }
       const meta = document.createElement('small');
       meta.textContent = `${result.area.toUpperCase()} · Nv ${result.requiredLevel}`;
-      hunt.append(name, meta);
+      hunt.append(nameLine, meta);
 
       const attack = document.createElement('div');
       attack.className = 'phr-attack';
@@ -1295,6 +1439,17 @@
     panel.querySelector('[data-phr="clan"]').textContent = state.character?.clan
       ? `${state.character.clan} R${state.character.clanRank || 0}`
       : 'Sem clã';
+    const xpNote = panel.querySelector('[data-phr="xp-note"]');
+    const typeOfDay = state.typeOfDay;
+    if (!state.boostsLoaded) {
+      xpNote.textContent = 'XP/h sem VIP e outros multiplicadores de XP da conta · Tipo do Dia ainda não consultado.';
+    } else if (!typeOfDay) {
+      xpNote.textContent = 'XP/h sem VIP e outros multiplicadores de XP da conta · Sem Tipo do Dia ativo.';
+    } else if (typeOfDay.type && typeOfDay.xpPercent > 0) {
+      xpNote.textContent = `XP/h sem VIP e outros multiplicadores de XP da conta · ${typeOfDay.emoji} Tipo do Dia: ${typeOfDay.label} (+${typeOfDay.xpPercent}% já aplicado).`;
+    } else {
+      xpNote.textContent = 'XP/h sem VIP e outros multiplicadores de XP da conta · Tipo do Dia não reconhecido; bônus não aplicado.';
+    }
 
     const best = state.results[0];
     panel.querySelector('[data-phr="best-name"]').textContent = best?.name || '—';
@@ -1330,6 +1485,7 @@
           <div><small>Treinador</small><b data-phr="trainer">—</b></div>
           <div><small>Clã</small><b data-phr="clan">—</b></div>
         </div>
+        <div class="phr-xp-note" data-phr="xp-note"></div>
         <section class="phr-best">
           <small>Melhor hunt</small>
           <strong data-phr="best-name">—</strong>
@@ -1399,6 +1555,7 @@
       #piw-hunt-recommender-panel .phr-meta div { display:flex;flex-direction:column;gap:2px;background:#101f2a;border:1px solid #20394b;border-radius:7px;padding:7px;min-width:0; }
       #piw-hunt-recommender-panel .phr-meta small { color:#718096;font-size:9px;text-transform:uppercase; }
       #piw-hunt-recommender-panel .phr-meta b { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+      #piw-hunt-recommender-panel .phr-xp-note { color:#a0aec0;background:#101f2a;border:1px solid #20394b;border-radius:7px;padding:7px 9px;margin-bottom:8px;font-size:11px; }
       #piw-hunt-recommender-panel .phr-best { display:grid;gap:5px;background:#111f29;border-left:3px solid #48bb78;border-radius:7px;padding:9px 11px;margin-bottom:8px; }
       #piw-hunt-recommender-panel .phr-best>small { color:#718096;text-transform:uppercase;font-size:9px; }
       #piw-hunt-recommender-panel .phr-best>strong { color:#bee3f8;font-size:17px; }
@@ -1414,7 +1571,9 @@
       #piw-hunt-recommender-panel .phr-row { background:#111f29;border:1px solid #1f3443;border-radius:6px;padding:7px; }
       #piw-hunt-recommender-panel .phr-row.phr-lethal { border-color:#623838;background:#241719; }
       #piw-hunt-recommender-panel .phr-hunt,#piw-hunt-recommender-panel .phr-attack { display:flex;flex-direction:column;min-width:0; }
+      #piw-hunt-recommender-panel .phr-hunt-name { display:flex;align-items:center;gap:4px;min-width:0; }
       #piw-hunt-recommender-panel .phr-hunt strong,#piw-hunt-recommender-panel .phr-attack span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+      #piw-hunt-recommender-panel .phr-type-day { flex:0 0 auto;font-size:13px;line-height:1;cursor:help; }
       #piw-hunt-recommender-panel .phr-row small { color:#718096;font-size:9px; }
       #piw-hunt-recommender-panel .phr-danger { border-radius:999px;padding:3px 5px;text-align:center;font-size:9px;font-weight:900;text-transform:uppercase; }
       #piw-hunt-recommender-panel .phr-danger.is-safe { color:#9ae6b4;background:#173426; }
@@ -1454,6 +1613,7 @@
   function uninstall() {
     state.installed = false;
     clearPokesWaiter(new Error('Hunt Recommender desinstalado.'));
+    clearBoostsWaiter(new Error('Hunt Recommender desinstalado.'));
     unsubscribeBridge?.();
     unsubscribeBridge = null;
     unregisterMenu?.();
