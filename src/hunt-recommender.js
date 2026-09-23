@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Hunt Recommender
 // @namespace    poke-manager
-// @version      1.0.6
+// @version      1.0.7
 // @description  Analisa o Pokémon equipado e indica as melhores hunts acessíveis por XP/h.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -36,6 +36,11 @@
   const CHARACTER_URL = '/api/characters/me';
   const AUTH_REFRESH_URL = '/api/auth/refresh';
   const POKES_TIMEOUT_MS = 3_500;
+  const MAP_OPEN_TIMEOUT_MS = 1_500;
+  const MARKER_SEARCH_TIMEOUT_MS = 1_500;
+  const HUNT_ENTRY_TIMEOUT_MS = 4_000;
+  const DOM_RETRY_MS = 100;
+  const AREA_CHANGE_DELAY_MS = 250;
   const PLAYER_ATTACK_INTERVAL_MS = 1_600;
   const WILD_ATTACK_INTERVAL_MS = 2_000;
   const MAX_VISIBLE_HUNTS = 15;
@@ -136,6 +141,12 @@
     boostsWaiter: null,
     boostsLoaded: false,
     typeOfDay: null,
+    navigating: false,
+    navigationSlug: null,
+    navigationGeneration: 0,
+    navigationTimer: null,
+    navigationResolve: null,
+    huntEntryWaiter: null,
   };
 
   let unsubscribeBridge = null;
@@ -569,6 +580,184 @@
     });
   }
 
+  function resolveHuntEntry(confirmed) {
+    const waiter = state.huntEntryWaiter;
+    if (!waiter) return;
+    clearTimeout(waiter.timer);
+    state.huntEntryWaiter = null;
+    waiter.resolve(Boolean(confirmed));
+  }
+
+  function cancelNavigation() {
+    state.navigationGeneration += 1;
+    if (state.navigationTimer) clearTimeout(state.navigationTimer);
+    state.navigationTimer = null;
+    state.navigationResolve?.(false);
+    state.navigationResolve = null;
+    resolveHuntEntry(false);
+    state.navigating = false;
+    state.navigationSlug = null;
+  }
+
+  function waitDuringNavigation(delayMs, generation) {
+    return new Promise((resolve) => {
+      state.navigationResolve = resolve;
+      state.navigationTimer = setTimeout(() => {
+        state.navigationTimer = null;
+        state.navigationResolve = null;
+        resolve(state.navigating && generation === state.navigationGeneration);
+      }, delayMs);
+    });
+  }
+
+  async function waitForDom(find, timeoutMs, generation) {
+    const deadline = Date.now() + timeoutMs;
+    while (state.navigating && generation === state.navigationGeneration) {
+      const found = find();
+      if (found) return found;
+      if (Date.now() >= deadline) return null;
+      if (!await waitDuringNavigation(DOM_RETRY_MS, generation)) return null;
+    }
+    return null;
+  }
+
+  function findHuntMarker(slug) {
+    const guide = `hunt-${slug}`;
+    return Array.from(document.querySelectorAll('[data-guide]'))
+      .find((element) => element.dataset?.guide === guide) || null;
+  }
+
+  function getAvailableMapAreas() {
+    return Array.from(document.querySelectorAll('.map-area:not(.locked), .map-plate:not(.locked)'));
+  }
+
+  function isElementVisible(element) {
+    return Boolean(element) && (
+      typeof getComputedStyle !== 'function' || getComputedStyle(element).display !== 'none'
+    );
+  }
+
+  async function locateHuntMarker(slug, generation) {
+    const mapWindow = document.querySelector('.map-window');
+    if (!isElementVisible(mapWindow)) {
+      const mapButton = document.querySelector('button[data-guide="dock-map"]');
+      if (!mapButton) return null;
+      mapButton.click();
+      const opened = await waitForDom(
+        () => {
+          const candidate = document.querySelector('.map-window');
+          return isElementVisible(candidate) ? candidate : null;
+        },
+        MAP_OPEN_TIMEOUT_MS,
+        generation,
+      );
+      if (!opened) return null;
+    }
+
+    let marker = await waitForDom(
+      () => findHuntMarker(slug),
+      MARKER_SEARCH_TIMEOUT_MS,
+      generation,
+    );
+    if (marker) return marker;
+
+    for (const area of getAvailableMapAreas()) {
+      if (!state.navigating || generation !== state.navigationGeneration) return null;
+      if (!area.matches?.('.on')) area.click();
+      if (!await waitDuringNavigation(AREA_CHANGE_DELAY_MS, generation)) return null;
+      marker = await waitForDom(
+        () => findHuntMarker(slug),
+        MARKER_SEARCH_TIMEOUT_MS,
+        generation,
+      );
+      if (marker) return marker;
+    }
+    return null;
+  }
+
+  function waitForHuntEntry(slug, generation) {
+    resolveHuntEntry(false);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        if (state.huntEntryWaiter?.timer !== timer) return;
+        state.huntEntryWaiter = null;
+        resolve(false);
+      }, HUNT_ENTRY_TIMEOUT_MS);
+      state.huntEntryWaiter = { slug, generation, timer, resolve };
+    });
+  }
+
+  function getNavigationConflict() {
+    try {
+      const pokedex = window.piwAutoPokedex?.status?.();
+      if (pokedex?.running || pokedex?.transitioning) return 'Pause o Auto Pokédex antes de trocar de hunt.';
+    } catch (error) {
+      console.warn('[PIW Hunt Recommender] Falha ao consultar o Auto Pokédex.', error);
+    }
+    try {
+      const boss = window.piwAutoBoss?.status?.();
+      if (boss?.running || boss?.stopping || boss?.transitioning) return 'Pare o Auto Boss antes de trocar de hunt.';
+    } catch (error) {
+      console.warn('[PIW Hunt Recommender] Falha ao consultar o Auto Boss.', error);
+    }
+    return null;
+  }
+
+  async function goToHunt(slug) {
+    if (state.navigating) return false;
+    const target = state.results.find((result) => result.slug === slug);
+    if (!target) {
+      setMessage('Essa hunt não pertence à análise atual.', true);
+      return false;
+    }
+    state.socket = bridge.getSocket();
+    if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
+      setMessage('Aguarde o WebSocket do jogo conectar.', true);
+      return false;
+    }
+    const conflict = getNavigationConflict();
+    if (conflict) {
+      setMessage(conflict, true);
+      return false;
+    }
+
+    state.navigationGeneration += 1;
+    const generation = state.navigationGeneration;
+    state.navigating = true;
+    state.navigationSlug = slug;
+    setMessage(`Abrindo ${target.name} pelo mapa do jogo...`);
+    try {
+      const marker = await locateHuntMarker(slug, generation);
+      if (!state.navigating || generation !== state.navigationGeneration) return false;
+      if (!marker) throw new Error(`Não foi possível localizar ${target.name} no mapa.`);
+      const confirmation = waitForHuntEntry(slug, generation);
+      try {
+        marker.click();
+      } catch (error) {
+        resolveHuntEntry(false);
+        throw error;
+      }
+      const confirmed = await confirmation;
+      if (!state.navigating || generation !== state.navigationGeneration) return false;
+      if (!confirmed) throw new Error(`O jogo não confirmou a entrada em ${target.name}.`);
+      state.lastMessage = `Entrada em ${target.name} confirmada.`;
+      state.lastError = false;
+      return true;
+    } catch (error) {
+      if (generation === state.navigationGeneration) {
+        state.lastMessage = error?.message || String(error);
+        state.lastError = true;
+      }
+      return false;
+    } finally {
+      if (generation === state.navigationGeneration) {
+        state.navigating = false;
+        state.navigationSlug = null;
+        renderPanel();
+      }
+    }
+  }
+
   async function loadCatalogs() {
     if (state.creatures.length && state.markers.length) return;
     const [creaturesPayload, markersPayload] = await Promise.all([
@@ -646,11 +835,24 @@
     }
   }
 
+  function handleOutgoing(message) {
+    if (message?.type !== 'enter-hunt' || !message.slug) return;
+    const waiter = state.huntEntryWaiter;
+    if (
+      waiter
+      && waiter.generation === state.navigationGeneration
+      && waiter.slug === String(message.slug)
+    ) {
+      resolveHuntEntry(true);
+    }
+  }
+
   function adoptSocket(socket) {
     if (!socket || state.socket === socket) return;
     if (state.socket && state.socket !== socket) {
       clearPokesWaiter(new Error('WebSocket substituído.'));
       clearBoostsWaiter(new Error('WebSocket substituído.'));
+      cancelNavigation();
       state.boostsLoaded = false;
       state.typeOfDay = null;
     }
@@ -672,12 +874,20 @@
       state.socket = null;
       clearPokesWaiter(new Error('WebSocket desconectado.'));
       clearBoostsWaiter(new Error('WebSocket desconectado.'));
+      if (state.navigating) {
+        cancelNavigation();
+        state.lastMessage = 'WebSocket desconectado durante a troca de hunt.';
+        state.lastError = true;
+      }
       state.boostsLoaded = false;
       state.typeOfDay = null;
       renderPanel();
     },
     incoming(event) {
       if (event.socket === state.socket) handleIncoming(event.message);
+    },
+    outgoing(event) {
+      if (event.socket === state.socket) handleOutgoing(event.message);
     },
   });
 
@@ -689,6 +899,8 @@
       socketOpen: state.socket?.readyState === WebSocket.OPEN,
       leader: state.leader ? { name: state.leader.name, level: state.leader.level } : null,
       trainerLevel: state.character?.level ?? null,
+      navigating: state.navigating,
+      navigationSlug: state.navigationSlug,
       typeOfDay: state.typeOfDay ? { ...state.typeOfDay } : null,
       results: state.results.map((result) => ({ ...result })),
       best: best ? { ...best } : null,
@@ -754,7 +966,16 @@
       danger.className = `phr-danger ${result.lethal ? 'is-lethal' : 'is-safe'}`;
       danger.textContent = result.lethal ? 'Letal' : 'OK';
 
-      row.append(hunt, attack, hits, kos, xp, danger);
+      const goButton = document.createElement('button');
+      goButton.className = 'phr-go';
+      goButton.type = 'button';
+      goButton.textContent = state.navigating && state.navigationSlug === result.slug ? '…' : '➜';
+      goButton.title = `Ir para ${result.name}`;
+      goButton.setAttribute('aria-label', `Ir para ${result.name}`);
+      goButton.disabled = state.navigating;
+      goButton.addEventListener('click', () => { goToHunt(result.slug); });
+
+      row.append(hunt, attack, hits, kos, xp, danger, goButton);
       container.appendChild(row);
     }
   }
@@ -762,7 +983,7 @@
   function renderPanel() {
     const panel = document.querySelector('#piw-hunt-recommender-panel');
     const menuButton = document.querySelector('#piw-hunt-recommender-button');
-    menuButton?.classList.toggle('phr-loading', state.loading);
+    menuButton?.classList.toggle('phr-loading', state.loading || state.navigating);
     if (!panel) return;
 
     const status = panel.querySelector('[data-phr="status"]');
@@ -802,7 +1023,7 @@
       ? `Dano/golpe ${formatNumber(best.damagePerHit)} · HP selvagem ${formatNumber(best.wildHp)} · deslocamento ${Math.round(best.overheadMs / 100) / 10}s`
       : '—';
     const refreshButton = panel.querySelector('.phr-refresh');
-    refreshButton.disabled = state.loading;
+    refreshButton.disabled = state.loading || state.navigating;
     refreshButton.textContent = state.loading ? 'Analisando...' : 'Analisar novamente';
     renderResults(panel.querySelector('.phr-results'));
   }
@@ -835,7 +1056,7 @@
           <span class="phr-best-lethal" data-phr="best-lethal">—</span>
         </section>
         <button class="phr-refresh" type="button">Analisar</button>
-        <div class="phr-head"><span>Hunt</span><span>Ataque</span><span>Hits</span><span>KOs/h</span><span>XP/h</span><span></span></div>
+        <div class="phr-head"><span>Hunt</span><span>Ataque</span><span>Hits</span><span>KOs/h</span><span>XP/h</span><span></span><span></span></div>
         <div class="phr-results"></div>
         <details class="phr-debug"><summary>Debug</summary><code data-phr="debug">—</code></details>
       </div>`;
@@ -902,7 +1123,7 @@
       #piw-hunt-recommender-panel .phr-best-lethal { color:#9ae6b4;font-weight:800; }
       #piw-hunt-recommender-panel .phr-best-lethal.is-lethal { color:#fc8181; }
       #piw-hunt-recommender-panel .phr-refresh { width:100%;margin-bottom:8px;background:#176342;border-color:#299263; }
-      #piw-hunt-recommender-panel .phr-head,#piw-hunt-recommender-panel .phr-row { display:grid;grid-template-columns:minmax(120px,1.35fr) minmax(105px,1.2fr) 45px 58px 78px 48px;gap:7px;align-items:center; }
+      #piw-hunt-recommender-panel .phr-head,#piw-hunt-recommender-panel .phr-row { display:grid;grid-template-columns:minmax(120px,1.35fr) minmax(105px,1.2fr) 45px 58px 78px 48px 29px;gap:7px;align-items:center; }
       #piw-hunt-recommender-panel .phr-head { color:#718096;font-size:9px;text-transform:uppercase;padding:0 7px 4px; }
       #piw-hunt-recommender-panel .phr-results { display:grid;gap:4px; }
       #piw-hunt-recommender-panel .phr-row { background:#111f29;border:1px solid #1f3443;border-radius:6px;padding:7px; }
@@ -915,6 +1136,7 @@
       #piw-hunt-recommender-panel .phr-danger { border-radius:999px;padding:3px 5px;text-align:center;font-size:9px;font-weight:900;text-transform:uppercase; }
       #piw-hunt-recommender-panel .phr-danger.is-safe { color:#9ae6b4;background:#173426; }
       #piw-hunt-recommender-panel .phr-danger.is-lethal { color:#feb2b2;background:#4b2023; }
+      #piw-hunt-recommender-panel .phr-go { width:29px;height:27px;padding:0;font-size:15px;line-height:1;background:#15364a;border-color:#2c6685; }
       #piw-hunt-recommender-panel .phr-empty { color:#718096;text-align:center;padding:14px; }
       #piw-hunt-recommender-panel .phr-debug { border-top:1px solid #20394b;margin-top:8px;padding-top:7px;color:#718096; }
       #piw-hunt-recommender-panel .phr-debug summary { cursor:pointer;text-transform:uppercase;font-size:10px;font-weight:800; }
@@ -923,7 +1145,7 @@
         #piw-hunt-recommender-panel .phr-meta { grid-template-columns:1fr 1fr; }
         #piw-hunt-recommender-panel .phr-best-grid { grid-template-columns:1fr 1fr; }
         #piw-hunt-recommender-panel .phr-head { display:none; }
-        #piw-hunt-recommender-panel .phr-row { grid-template-columns:1.4fr 1.2fr 42px 56px; }
+        #piw-hunt-recommender-panel .phr-row { grid-template-columns:1.4fr 1.2fr 42px 56px 29px; }
         #piw-hunt-recommender-panel .phr-row>b:nth-of-type(3),#piw-hunt-recommender-panel .phr-danger { display:none; }
       }
     `;
@@ -951,6 +1173,7 @@
     state.installed = false;
     clearPokesWaiter(new Error('Hunt Recommender desinstalado.'));
     clearBoostsWaiter(new Error('Hunt Recommender desinstalado.'));
+    cancelNavigation();
     unsubscribeBridge?.();
     unsubscribeBridge = null;
     unregisterMenu?.();
@@ -971,6 +1194,7 @@
     installed: true,
     analyze,
     calculate: calculateRecommendations,
+    goToHunt,
     status: getStatus,
     uninstall,
   };

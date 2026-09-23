@@ -46,6 +46,8 @@ function createHarness({ creatures = [], markers = [], character = { level: 100 
   let currentSocket = null;
   const storage = new Map();
   const requests = [];
+  let mapOpen = false;
+  let visualHuntSlug = null;
 
   class FakeWebSocket {
     static OPEN = 1;
@@ -87,7 +89,26 @@ function createHarness({ creatures = [], markers = [], character = { level: 100 
       readyState: 'loading',
       addEventListener() {},
       getElementById() { return null; },
-      querySelector() { return null; },
+      querySelector(selector) {
+        if (selector === 'button[data-guide="dock-map"]') {
+          return { click() { mapOpen = true; } };
+        }
+        if (selector === '.map-window') return mapOpen ? {} : null;
+        return null;
+      },
+      querySelectorAll(selector) {
+        if (selector === '[data-guide]' && mapOpen) {
+          return markers.map((entry) => ({
+            dataset: { guide: `hunt-${entry.slug}` },
+            click() {
+              visualHuntSlug = entry.slug;
+              currentSocket?.send(JSON.stringify({ type: 'enter-hunt', slug: entry.slug }));
+            },
+          }));
+        }
+        if (selector === '.map-area:not(.locked), .map-plate:not(.locked)') return [];
+        return [];
+      },
     },
     fetch: async (url) => {
       requests.push(url);
@@ -109,6 +130,7 @@ function createHarness({ creatures = [], markers = [], character = { level: 100 
     setTimeout,
     clearTimeout,
     WebSocket: FakeWebSocket,
+    getComputedStyle() { return { display: 'block' }; },
   };
   context.window = context;
   vm.runInNewContext(source, context);
@@ -126,6 +148,7 @@ function createHarness({ creatures = [], markers = [], character = { level: 100 
     context,
     currentSocket: () => currentSocket,
     requests,
+    visualHuntSlug: () => visualHuntSlug,
   };
 }
 
@@ -373,6 +396,26 @@ test('análise solicita pokes-get, usa respostas oficiais e permanece somente le
     xpPercent: 20,
     until: 4_000_000_000_000,
   });
+});
+
+test('entra na hunt pelo marcador visual e aguarda o enter-hunt do jogo', async () => {
+  const data = fixtures();
+  const harness = createHarness({
+    creatures: data.creatures,
+    markers: data.markers,
+    character: { level: 100 },
+  });
+  const socket = harness.captureSocket();
+  const analysis = harness.api.analyze();
+  socket.emit('message', { type: 'pokes', list: [data.leader] });
+  socket.emit('message', { type: 'events', events: [] });
+  assert.equal(await analysis, true);
+  socket.sent = [];
+
+  assert.equal(await harness.api.goToHunt('leafling'), true);
+  assert.equal(harness.visualHuntSlug(), 'leafling');
+  assert.deepEqual(socket.sent, [{ type: 'enter-hunt', slug: 'leafling' }]);
+  assert.equal(harness.api.status().navigating, false);
 });
 
 test('recusa Ditto nesta primeira versão', () => {
