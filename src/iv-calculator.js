@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW IV Calculator
 // @namespace    poke-manager
-// @version      1.0.1
+// @version      1.0.3
 // @description  Calcula os IVs dos Pokémon atualmente equipados no Poke Idle World.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -104,7 +104,8 @@
       const multiplier = (normalizedLevel / 100) * Math.pow(normalizedQuality, definition.exponent);
       if (stat === null || base === null || !(multiplier > 0)) return null;
       const rawIv = (stat / multiplier - base) / 2;
-      ivs[definition.key] = Math.max(0, Math.min(MAX_IV, Math.round(rawIv)));
+      const roundedIv = Math.round(rawIv * 10) / 10;
+      ivs[definition.key] = Math.max(0, Math.min(MAX_IV, roundedIv));
     }
     return ivs;
   }
@@ -116,7 +117,9 @@
     if (!creature) throw new Error(`Espécie de ${pokemon.name || 'Pokémon'} não encontrada.`);
     const ivs = calculateIndividualIVs(pokemon.level, pokemon.quality, pokemon.stats, creature);
     if (!ivs) throw new Error(`Dados de IV incompletos para ${pokemon.name || creature.name}.`);
-    const total = STAT_DEFINITIONS.reduce((sum, definition) => sum + ivs[definition.key], 0);
+    const total = Math.round(
+      STAT_DEFINITIONS.reduce((sum, definition) => sum + ivs[definition.key], 0) * 10,
+    ) / 10;
     return {
       pokemon: {
         name: String(pokemon.name || creature.name),
@@ -338,14 +341,18 @@
     const result = entry?.result || null;
     panel.querySelector('[data-piv="level"]').textContent = result ? `Nv ${result.pokemon.level}` : '—';
     panel.querySelector('[data-piv="quality"]').textContent = result ? formatQuality(result.pokemon.quality) : '—';
-    panel.querySelector('[data-piv="total"]').textContent = result ? `${result.total}/${result.totalMax}` : '—';
+    panel.querySelector('[data-piv="total"]').textContent = result
+      ? `${result.total.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}/${result.totalMax}`
+      : '—';
     panel.querySelector('[data-piv="percent"]').textContent = result ? `${result.percent.toFixed(1)}%` : '—';
 
     for (const definition of STAT_DEFINITIONS) {
       const card = panel.querySelector(`[data-piv-stat="${definition.key}"]`);
       const iv = result?.ivs?.[definition.key];
       const hasIv = Number.isFinite(iv);
-      card.querySelector('b').textContent = hasIv ? String(iv) : '—';
+      card.querySelector('b').textContent = hasIv
+        ? iv.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+        : '—';
       const fill = card.querySelector('.piv-fill');
       fill.style.width = hasIv ? `${iv / MAX_IV * 100}%` : '0%';
       fill.style.background = hasIv ? `hsl(${Math.round(iv / MAX_IV * 120)} 65% 48%)` : '#314351';
@@ -386,6 +393,7 @@
     disposePanelDrag?.();
     disposePanelDrag = uiMenu.makePanelDraggable(panel, {
       storageKey: 'piw-iv-calculator-panel-position-v1',
+      sizeStorageKey: 'piw-iv-calculator-panel-size-v1',
     });
     panel.querySelector('.piv-close').addEventListener('click', () => { panel.hidden = true; });
     panel.querySelector('.piv-refresh').addEventListener('click', refresh);

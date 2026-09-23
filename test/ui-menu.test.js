@@ -78,13 +78,15 @@ function createDomHarness({ withQolSidebar = false } = {}) {
     getBoundingClientRect() {
       const left = Number.parseFloat(this.style.left) || 0;
       const top = Number.parseFloat(this.style.top) || 0;
+      const width = Number.parseFloat(this.style.width) || this.offsetWidth;
+      const height = Number.parseFloat(this.style.height) || this.offsetHeight;
       return {
         left,
         top,
-        width: this.offsetWidth,
-        height: this.offsetHeight,
-        right: left + this.offsetWidth,
-        bottom: top + this.offsetHeight,
+        width,
+        height,
+        right: left + width,
+        bottom: top + height,
       };
     }
 
@@ -346,4 +348,52 @@ test('move painel, salva por aba, limita à tela e restaura no duplo clique', ()
   assert.equal(panel.style.left, '');
   assert.equal(cleanup(), true);
   assert.equal(cleanup(), false);
+});
+
+test('redimensiona pelo canto, persiste por aba, limita à tela e restaura o padrão', () => {
+  const harness = createDomHarness();
+  const panel = harness.document.createElement('section');
+  panel.offsetWidth = 300;
+  panel.offsetHeight = 200;
+  const header = harness.document.createElement('header');
+  const body = harness.document.createElement('div');
+  panel.append(header, body);
+  harness.document.body.appendChild(panel);
+
+  const cleanup = harness.context.piwScripts.uiMenu.makePanelDraggable(panel, {
+    storageKey: 'test-resizable-position',
+    sizeStorageKey: 'test-resizable-size',
+  });
+  const resizeHandle = panel.children.find((child) => child.dataset.piwResizeHandle === 'true');
+  assert.ok(resizeHandle);
+  assert.equal(panel.style.width, undefined);
+  assert.equal(panel.style.height, undefined);
+
+  resizeHandle.dispatch('pointerdown', {
+    button: 0,
+    isPrimary: true,
+    pointerId: 3,
+    clientX: 300,
+    clientY: 200,
+  });
+  harness.dispatchWindow('pointermove', { pointerId: 3, clientX: 500, clientY: 400 });
+  harness.dispatchWindow('pointerup', { pointerId: 3 });
+
+  assert.equal(panel.style.width, '500px');
+  assert.equal(panel.style.height, '400px');
+  assert.deepEqual(JSON.parse(harness.storage.get('test-resizable-size')), { width: 500, height: 400 });
+
+  harness.context.innerWidth = 420;
+  harness.context.innerHeight = 320;
+  harness.dispatchWindow('resize');
+  assert.equal(panel.style.width, '404px');
+  assert.equal(panel.style.height, '304px');
+  assert.deepEqual(JSON.parse(harness.storage.get('test-resizable-size')), { width: 404, height: 304 });
+
+  resizeHandle.dispatch('dblclick');
+  assert.equal(panel.style.width, undefined);
+  assert.equal(panel.style.height, undefined);
+  assert.equal(harness.storage.has('test-resizable-size'), false);
+  assert.equal(cleanup(), true);
+  assert.equal(panel.children.includes(resizeHandle), false);
 });

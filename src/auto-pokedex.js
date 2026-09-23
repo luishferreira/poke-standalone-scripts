@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Auto Pokédex
 // @namespace    poke-manager
-// @version      1.1.2
+// @version      1.1.3
 // @description  Percorre automaticamente as hunts acessíveis até completar as capturas pendentes da Pokédex.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -999,6 +999,7 @@
     disposePanelDrag?.();
     disposePanelDrag = uiMenu.makePanelDraggable(panel, {
       storageKey: 'piw-auto-pokedex-panel-position-v1',
+      sizeStorageKey: 'piw-auto-pokedex-panel-size-v1',
     });
 
     panel.querySelector('.pap-close').addEventListener('click', () => { panel.hidden = true; });

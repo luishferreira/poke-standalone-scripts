@@ -64,7 +64,7 @@ O Auto Pokédex inicia pausado e não realiza capturas. Ao ser ativado, cruza a 
 
 O Hunt Recommender analisa o Pokémon equipado, o nível, o clã e os eventos ativos da conta e calcula as hunts acessíveis de Kanto e Outland. A lista mostra o melhor ataque, golpes por Pokémon, KOs/h, XP/h e se a hunt é letal. O Tipo do Dia é aplicado ao XP/h das hunts correspondentes; VIP e outros multiplicadores de XP da conta não são incluídos. O botão no fim de cada linha permite entrar manualmente na hunt pelo mapa do jogo. Ditto, TMs, Orre e Nightmare ficam fora da primeira versão.
 
-A Calculadora de IVs é somente leitura. Ao abrir ou atualizar o painel, ela carrega os Pokémon atualmente na equipe, seleciona o líder e calcula os seis IVs de 0 a 32 usando nível, quality, atributos atuais e atributos-base da espécie. O seletor permite conferir os demais slots sem fazer novas requests.
+A Calculadora de IVs é somente leitura. Ao abrir ou atualizar o painel, ela carrega os Pokémon atualmente na equipe, seleciona o líder e calcula os seis IVs de 0 a 32 com uma casa decimal, usando nível, quality, atributos atuais e atributos-base da espécie. O seletor permite conferir os demais slots sem fazer novas requests.
 
 O Auto Refill inicia pausado. No painel, escolha potion e ball, configure threshold, quantidade e reserva de gold e então ative. A venda automática de loot comum é opcional e vende itens de NPC dentro da regra indicada na interface.
 

@@ -134,6 +134,16 @@ test('calcula os seis IVs com expoentes próprios de HP e Speed', () => {
   assert.ok(Math.abs(result.percent - 60.9375) < 1e-9);
 });
 
+test('preserva a primeira casa decimal dos IVs e do total', () => {
+  const harness = createHarness();
+  const expected = { hp: 31.7, atk: 26.4, def: 18.9, spAtk: 10.2, spDef: 3.5, speed: 24.6 };
+  const pokemon = pokemonWithIvs({ ivs: expected, level: 43, quality: 1.87 });
+  const result = harness.api.calculatePokemon(pokemon, [baseCreature()]);
+
+  assert.deepEqual(plain(result.ivs), expected);
+  assert.equal(result.total, 115.3);
+});
+
 test('limita cada IV à faixa de 0 a 32', () => {
   const harness = createHarness();
   const result = harness.api.calculateIndividualIVs(100, 1, {

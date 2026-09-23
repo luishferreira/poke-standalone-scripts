@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Auto Refill
 // @namespace    poke-manager
-// @version      1.2.0
+// @version      1.2.1
 // @description  Reabastece potions e Pokébolas com limites configuráveis e venda opcional de loot comum.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -299,8 +299,11 @@
 
   function createPanelDragHandler(panel, {
     storageKey,
+    sizeStorageKey = null,
     handle = panel?.querySelector?.('header'),
     margin = 8,
+    minWidth = 240,
+    minHeight = 160,
   } = {}) {
     if (!panel || !handle || !storageKey) {
       throw new TypeError('Configuração de painel móvel inválida.');
@@ -313,7 +316,28 @@
       touchAction: handle.style.touchAction,
       userSelect: handle.style.userSelect,
     };
+    const body = Array.from(panel.children || []).find((child) => child !== handle) || null;
+    const originalPanelStyle = {
+      display: panel.style.display,
+      flexDirection: panel.style.flexDirection,
+      overflow: panel.style.overflow,
+      width: panel.style.width,
+      height: panel.style.height,
+      maxWidth: panel.style.maxWidth,
+      maxHeight: panel.style.maxHeight,
+    };
+    const originalHandleFlex = handle.style.flex;
+    const originalBodyStyle = body ? {
+      flex: body.style.flex,
+      minHeight: body.style.minHeight,
+      maxHeight: body.style.maxHeight,
+      overflow: body.style.overflow,
+    } : null;
+    const safeMinWidth = Math.max(160, Number(minWidth) || 240);
+    const safeMinHeight = Math.max(100, Number(minHeight) || 160);
     let dragging = null;
+    let resizing = null;
+    let resizeHandle = null;
     let lastSize = { width: 0, height: 0 };
 
     function readPosition() {
@@ -340,6 +364,36 @@
         sessionStorage.removeItem(storageKey);
       } catch {
         // A posição visual ainda pode ser restaurada sem acesso ao storage.
+      }
+    }
+
+    function readSize() {
+      if (!sizeStorageKey) return null;
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(sizeStorageKey) || 'null');
+        const width = Number(saved?.width);
+        const height = Number(saved?.height);
+        return Number.isFinite(width) && Number.isFinite(height) ? { width, height } : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function saveSize(size) {
+      if (!sizeStorageKey) return;
+      try {
+        sessionStorage.setItem(sizeStorageKey, JSON.stringify(size));
+      } catch {
+        // O redimensionamento continua funcionando mesmo quando o storage está indisponível.
+      }
+    }
+
+    function removeSavedSize() {
+      if (!sizeStorageKey) return;
+      try {
+        sessionStorage.removeItem(sizeStorageKey);
+      } catch {
+        // O tamanho visual ainda pode ser restaurado sem acesso ao storage.
       }
     }
 
@@ -383,6 +437,30 @@
       return position;
     }
 
+    function clampSize(width, height) {
+      const rect = panel.getBoundingClientRect();
+      const viewportWidth = Number(window.innerWidth) || document.documentElement?.clientWidth || width;
+      const viewportHeight = Number(window.innerHeight) || document.documentElement?.clientHeight || height;
+      const anchoredLeft = panel.style.left ? rect.left : safeMargin;
+      const anchoredTop = panel.style.top ? rect.top : safeMargin;
+      const maxWidth = Math.max(safeMinWidth, viewportWidth - Math.max(safeMargin, anchoredLeft) - safeMargin);
+      const maxHeight = Math.max(safeMinHeight, viewportHeight - Math.max(safeMargin, anchoredTop) - safeMargin);
+      return {
+        width: Math.round(Math.min(maxWidth, Math.max(safeMinWidth, Number(width) || safeMinWidth))),
+        height: Math.round(Math.min(maxHeight, Math.max(safeMinHeight, Number(height) || safeMinHeight))),
+      };
+    }
+
+    function applySize(width, height, { persist = false } = {}) {
+      const size = clampSize(width, height);
+      panel.style.width = `${size.width}px`;
+      panel.style.height = `${size.height}px`;
+      panel.style.maxWidth = `calc(100vw - ${safeMargin * 2}px)`;
+      panel.style.maxHeight = `calc(100vh - ${safeMargin * 2}px)`;
+      if (persist) saveSize(size);
+      return size;
+    }
+
     function isInteractive(target) {
       let current = target;
       while (current && current !== handle) {
@@ -400,6 +478,18 @@
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', stopDragging);
       window.removeEventListener('pointercancel', stopDragging);
+    }
+
+    function stopResizing(event) {
+      if (!resizing || (event?.pointerId != null && event.pointerId !== resizing.pointerId)) return;
+      const size = applySize(panel.getBoundingClientRect().width, panel.getBoundingClientRect().height);
+      saveSize(size);
+      const position = applyPosition(panel.getBoundingClientRect().left, panel.getBoundingClientRect().top);
+      savePosition(position);
+      resizing = null;
+      window.removeEventListener('pointermove', onResizePointerMove);
+      window.removeEventListener('pointerup', stopResizing);
+      window.removeEventListener('pointercancel', stopResizing);
     }
 
     function onPointerMove(event) {
@@ -426,6 +516,34 @@
       event.preventDefault?.();
     }
 
+    function onResizePointerMove(event) {
+      if (!resizing || event.pointerId !== resizing.pointerId) return;
+      applySize(
+        resizing.width + event.clientX - resizing.startX,
+        resizing.height + event.clientY - resizing.startY,
+      );
+      event.preventDefault?.();
+    }
+
+    function onResizePointerDown(event) {
+      if ((event.button != null && event.button !== 0) || event.isPrimary === false) return;
+      const rect = panel.getBoundingClientRect();
+      applyPosition(rect.left, rect.top);
+      resizing = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        width: rect.width,
+        height: rect.height,
+      };
+      resizeHandle.setPointerCapture?.(event.pointerId);
+      window.addEventListener('pointermove', onResizePointerMove);
+      window.addEventListener('pointerup', stopResizing);
+      window.addEventListener('pointercancel', stopResizing);
+      event.stopPropagation?.();
+      event.preventDefault?.();
+    }
+
     function resetPosition(event) {
       if (isInteractive(event?.target)) return;
       dragging = null;
@@ -441,7 +559,26 @@
       event?.preventDefault?.();
     }
 
+    function resetSize(event) {
+      resizing = null;
+      window.removeEventListener('pointermove', onResizePointerMove);
+      window.removeEventListener('pointerup', stopResizing);
+      window.removeEventListener('pointercancel', stopResizing);
+      panel.style.width = originalPanelStyle.width;
+      panel.style.height = originalPanelStyle.height;
+      panel.style.maxWidth = originalPanelStyle.maxWidth;
+      panel.style.maxHeight = originalPanelStyle.maxHeight;
+      removeSavedSize();
+      keepInsideViewport();
+      event?.stopPropagation?.();
+      event?.preventDefault?.();
+    }
+
     function keepInsideViewport() {
+      if (sizeStorageKey && panel.style.width && panel.style.height) {
+        const rect = panel.getBoundingClientRect();
+        applySize(rect.width, rect.height, { persist: true });
+      }
       if (!panel.style.left || !panel.style.top) return;
       const rect = panel.getBoundingClientRect();
       const styledLeft = parseFloat(panel.style.left);
@@ -458,6 +595,38 @@
     handle.style.cursor = 'move';
     handle.style.touchAction = 'none';
     handle.style.userSelect = 'none';
+    if (sizeStorageKey) {
+      panel.dataset.piwResizablePanel = 'true';
+      panel.style.display = 'flex';
+      panel.style.flexDirection = 'column';
+      panel.style.overflow = 'hidden';
+      handle.style.flex = '0 0 auto';
+      if (body) {
+        body.style.flex = '1 1 auto';
+        body.style.minHeight = '0';
+        body.style.maxHeight = 'none';
+        body.style.overflow = 'auto';
+      }
+      resizeHandle = document.createElement('span');
+      resizeHandle.dataset.piwResizeHandle = 'true';
+      resizeHandle.title = 'Arraste para redimensionar · duplo clique para restaurar';
+      resizeHandle.setAttribute('aria-hidden', 'true');
+      Object.assign(resizeHandle.style, {
+        position: 'absolute',
+        right: '1px',
+        bottom: '1px',
+        width: '15px',
+        height: '15px',
+        zIndex: '3',
+        cursor: 'nwse-resize',
+        touchAction: 'none',
+        userSelect: 'none',
+        background: 'linear-gradient(135deg, transparent 0 45%, #718096 46% 54%, transparent 55% 65%, #a0aec0 66% 74%, transparent 75%)',
+      });
+      resizeHandle.addEventListener('pointerdown', onResizePointerDown);
+      resizeHandle.addEventListener('dblclick', resetSize);
+      panel.appendChild(resizeHandle);
+    }
     handle.addEventListener('pointerdown', onPointerDown);
     handle.addEventListener('dblclick', resetPosition);
     window.addEventListener('resize', keepInsideViewport);
@@ -467,6 +636,8 @@
         })
       : null;
     visibilityObserver?.observe(panel, { attributes: true, attributeFilter: ['hidden'] });
+    const savedSize = readSize();
+    if (savedSize) applySize(savedSize.width, savedSize.height);
     const savedPosition = readPosition();
     if (savedPosition) applyPosition(savedPosition.left, savedPosition.top);
 
@@ -475,17 +646,39 @@
       if (!active) return false;
       active = false;
       dragging = null;
+      resizing = null;
       handle.removeEventListener('pointerdown', onPointerDown);
       handle.removeEventListener('dblclick', resetPosition);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', stopDragging);
       window.removeEventListener('pointercancel', stopDragging);
+      window.removeEventListener('pointermove', onResizePointerMove);
+      window.removeEventListener('pointerup', stopResizing);
+      window.removeEventListener('pointercancel', stopResizing);
       window.removeEventListener('resize', keepInsideViewport);
       visibilityObserver?.disconnect();
       handle.style.cursor = originalHandleStyle.cursor;
       handle.style.touchAction = originalHandleStyle.touchAction;
       handle.style.userSelect = originalHandleStyle.userSelect;
+      handle.style.flex = originalHandleFlex;
+      resizeHandle?.removeEventListener('pointerdown', onResizePointerDown);
+      resizeHandle?.removeEventListener('dblclick', resetSize);
+      resizeHandle?.remove();
+      panel.style.display = originalPanelStyle.display;
+      panel.style.flexDirection = originalPanelStyle.flexDirection;
+      panel.style.overflow = originalPanelStyle.overflow;
+      panel.style.width = originalPanelStyle.width;
+      panel.style.height = originalPanelStyle.height;
+      panel.style.maxWidth = originalPanelStyle.maxWidth;
+      panel.style.maxHeight = originalPanelStyle.maxHeight;
+      if (body && originalBodyStyle) {
+        body.style.flex = originalBodyStyle.flex;
+        body.style.minHeight = originalBodyStyle.minHeight;
+        body.style.maxHeight = originalBodyStyle.maxHeight;
+        body.style.overflow = originalBodyStyle.overflow;
+      }
       delete handle.dataset.piwDraggableHandle;
+      delete panel.dataset.piwResizablePanel;
       attachedPanels.delete(panel);
       return true;
     };
@@ -494,8 +687,12 @@
   }
 
   if (namespace.uiMenu?.apiVersion === 1) {
-    if (typeof namespace.uiMenu.makePanelDraggable !== 'function') {
+    if (
+      typeof namespace.uiMenu.makePanelDraggable !== 'function'
+      || Number(namespace.uiMenu.panelInteractionVersion) < 2
+    ) {
       namespace.uiMenu.makePanelDraggable = createPanelDragHandler;
+      namespace.uiMenu.panelInteractionVersion = 2;
     }
     return;
   }
@@ -639,6 +836,7 @@
 
   namespace.uiMenu = {
     apiVersion: 1,
+    panelInteractionVersion: 2,
     register({ id, label, icon = '•', order = 100, onClick, onMount = null }) {
       if (!id || !label || typeof onClick !== 'function') {
         throw new TypeError('Registro de menu inválido.');
@@ -1347,6 +1545,7 @@
     disposePanelDrag?.();
     disposePanelDrag = uiMenu.makePanelDraggable(panel, {
       storageKey: 'piw-auto-refill-panel-position-v1',
+      sizeStorageKey: 'piw-auto-refill-panel-size-v1',
     });
     syncFormFromSettings(panel);
     populateProductSelectors();

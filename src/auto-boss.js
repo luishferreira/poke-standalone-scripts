@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Auto Boss Farmer PIW
-// @version      1.5.0
+// @version      1.5.1
 // @description  Painel para farmar Bosses com HUD, cura entre lutas e parada agendada.
 // @author       Luis
 // @match        https://poke.idleworld.online/play
@@ -442,6 +442,7 @@
         disposePanelDrag?.();
         disposePanelDrag = uiMenu.makePanelDraggable(panel, {
             storageKey: 'piw-auto-boss-panel-position-v1',
+            sizeStorageKey: 'piw-auto-boss-panel-size-v1',
         });
 
         panel.querySelector('.pba-close').addEventListener('click', () => { panel.hidden = true; });

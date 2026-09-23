@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Auto Catch
 // @namespace    poke-manager
-// @version      1.7.0
+// @version      1.7.1
 // @description  Captura automaticamente os Pokémon pendentes usando o WebSocket do jogo.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -249,6 +249,7 @@
     disposePanelDrag?.();
     disposePanelDrag = uiMenu.makePanelDraggable(panel, {
       storageKey: 'piw-auto-catch-panel-position-v1',
+      sizeStorageKey: 'piw-auto-catch-panel-size-v1',
     });
     panel.querySelector('.pac-close').addEventListener('click', () => { panel.hidden = true; });
     panel.querySelector('.pac-toggle').addEventListener('click', () => {

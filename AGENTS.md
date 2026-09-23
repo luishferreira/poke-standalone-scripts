@@ -100,7 +100,7 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 - Userscript próprio somente leitura, executado em `document-start` e exposto em `window.piwIvCalculator`.
 - Solicita `pokes-get` somente ao abrir ou atualizar, filtra os Pokémon atualmente na equipe e seleciona o líder por padrão.
 - Cruza `speciesId` com `/game/creatures.json`, com nome normalizado apenas como fallback para localizar os atributos-base da espécie.
-- Calcula IVs de 0 a 32 com a fórmula confirmada: HP e Speed usam expoente de quality 0,95; os outros quatro atributos usam 0,8.
+- Calcula IVs de 0 a 32 com uma casa decimal usando a fórmula confirmada: HP e Speed usam expoente de quality 0,95; os outros quatro atributos usam 0,8.
 - Exibe os seis IVs, total de 192 e porcentagem; trocar o Pokémon no seletor não dispara nova request.
 - Registra o botão no menu lateral compartilhado e persiste somente a posição do painel no `sessionStorage`.
 
@@ -164,7 +164,7 @@ O bridge por si só é passivo: instalar não abre conexão nem envia mensagens.
 
 `src/shared/ui-menu.js` implementa `window.piwScripts.uiMenu` v1. Os sete scripts registram seus botões nele e removem somente o próprio registro no uninstall. O módulo reutiliza o `#script-sidebar` do PIW-QOL quando presente e cria uma sidebar equivalente quando ausente; essa coexistência é apenas pelo contêiner DOM, sem chamar funções internas nem acessar configurações do QOL. A ordem de carregamento deve funcionar nos dois sentidos.
 
-O mesmo módulo expõe `makePanelDraggable`. Os sete painéis próprios do PIW usam o cabeçalho como alça, persistem coordenadas individuais no `sessionStorage`, limitam a posição ao viewport e restauram o layout padrão com duplo clique. Ao recriar ou desinstalar um painel, execute o cleanup retornado para não acumular listeners de resize/pointer.
+O mesmo módulo expõe `makePanelDraggable`, que também habilita redimensionamento quando recebe `sizeStorageKey`. Os sete painéis próprios do PIW usam o cabeçalho para mover e o canto inferior direito para redimensionar, persistem posição/tamanho individualmente no `sessionStorage`, limitam ambos ao viewport e restauram o padrão com duplo clique na alça correspondente. Ao recriar ou desinstalar um painel, execute o cleanup retornado para não acumular listeners de resize/pointer.
 
 ## Estado e persistência no navegador
 

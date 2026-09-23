@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Auto reconnect
 // @namespace    http://tampermonkey.net/
-// @version      2026-09-22.1
+// @version      2026-09-23.1
 // @description  auto reconecta e pula mega sableye
 // @author       Luis
 // @match        https://poke.idleworld.online/play
@@ -181,6 +181,7 @@
     disposePanelDrag?.();
     disposePanelDrag = uiMenu.makePanelDraggable(panel, {
       storageKey: 'piw-hunt-watchdog-panel-position-v1',
+      sizeStorageKey: 'piw-hunt-watchdog-panel-size-v1',
     });
     panel.querySelector('.phw-close').addEventListener('click', () => { panel.hidden = true; });
     panel.querySelector('.phw-toggle').addEventListener('click', () => {

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Hunt Recommender
 // @namespace    poke-manager
-// @version      1.0.7
+// @version      1.0.8
 // @description  Analisa o Pokémon equipado e indica as melhores hunts acessíveis por XP/h.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -1064,6 +1064,7 @@
     disposePanelDrag?.();
     disposePanelDrag = uiMenu.makePanelDraggable(panel, {
       storageKey: 'piw-hunt-recommender-panel-position-v1',
+      sizeStorageKey: 'piw-hunt-recommender-panel-size-v1',
     });
     panel.querySelector('.phr-close').addEventListener('click', () => { panel.hidden = true; });
     panel.querySelector('.phr-refresh').addEventListener('click', analyze);
