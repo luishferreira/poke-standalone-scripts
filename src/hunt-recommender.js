@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Hunt Recommender
 // @namespace    poke-manager
-// @version      1.0.8
+// @version      1.0.9
 // @description  Analisa o Pokémon equipado e indica as melhores hunts acessíveis por XP/h.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -1064,7 +1064,7 @@
     disposePanelDrag?.();
     disposePanelDrag = uiMenu.makePanelDraggable(panel, {
       storageKey: 'piw-hunt-recommender-panel-position-v1',
-      sizeStorageKey: 'piw-hunt-recommender-panel-size-v1',
+      sizeStorageKey: 'piw-hunt-recommender-panel-size-v2',
     });
     panel.querySelector('.phr-close').addEventListener('click', () => { panel.hidden = true; });
     panel.querySelector('.phr-refresh').addEventListener('click', analyze);
@@ -1100,7 +1100,7 @@
       #piw-hunt-recommender-button::after { content:'';position:absolute;right:4px;top:4px;width:6px;height:6px;border-radius:50%;background:#48bb78; }
       #piw-hunt-recommender-button.phr-loading::after { background:#ecc94b;box-shadow:0 0 6px #ecc94b; }
       #piw-hunt-recommender-panel[hidden] { display:none !important; }
-      #piw-hunt-recommender-panel { position:fixed;right:18px;top:110px;z-index:10020;width:min(720px,calc(100vw - 24px));display:flex;flex-direction:column;background:#0c161f;color:#e2e8f0;border:1px solid #315269;border-radius:12px;box-shadow:0 18px 48px rgba(0,0,0,.75);overflow:hidden;font:13px/1.35 system-ui,sans-serif; }
+      #piw-hunt-recommender-panel { position:fixed;right:18px;top:110px;z-index:10020;width:min(560px,calc(100vw - 24px));height:min(600px,72vh);display:flex;flex-direction:column;background:#0c161f;color:#e2e8f0;border:1px solid #315269;border-radius:12px;box-shadow:0 18px 48px rgba(0,0,0,.75);overflow:hidden;font:13px/1.35 system-ui,sans-serif; }
       #piw-hunt-recommender-panel header { display:flex;align-items:center;gap:8px;padding:11px 13px;background:#14222d;border-bottom:1px solid #273f52;font-weight:800;color:#90cdf4; }
       #piw-hunt-recommender-panel header span { flex:1; }
       #piw-hunt-recommender-panel button { border:1px solid #315269;border-radius:6px;background:#172a38;color:#d9e7f2;padding:7px 9px;font-weight:700;cursor:pointer; }
