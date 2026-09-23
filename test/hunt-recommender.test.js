@@ -298,7 +298,7 @@ test('aplica o bônus de XP do Tipo do Dia somente às hunts do tipo corresponde
   assert.equal(boostedAquabeast.typeOfDayApplied, false);
 });
 
-test('ordena somente por XP/h mesmo quando a melhor hunt é letal', () => {
+test('prioriza hunts não letais mesmo quando uma hunt letal tem mais XP/h', () => {
   const data = fixtures();
   const safeWild = creature({
     pokeId: 5,
@@ -329,10 +329,10 @@ test('ordena somente por XP/h mesmo quando a melhor hunt é letal', () => {
     ],
   });
 
-  assert.equal(result.recommendations[0].slug, 'lethal');
-  assert.equal(result.recommendations[0].lethal, true);
-  assert.equal(result.recommendations[1].slug, 'safe');
-  assert.equal(result.recommendations[1].lethal, false);
+  assert.equal(result.recommendations[0].slug, 'safe');
+  assert.equal(result.recommendations[0].lethal, false);
+  assert.equal(result.recommendations[1].slug, 'lethal');
+  assert.equal(result.recommendations[1].lethal, true);
 });
 
 test('análise solicita pokes-get, usa respostas oficiais e permanece somente leitura', async () => {

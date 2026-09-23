@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Hunt Recommender
 // @namespace    poke-manager
-// @version      1.0.5
+// @version      1.0.6
 // @description  Analisa o Pokémon equipado e indica as melhores hunts acessíveis por XP/h.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -1152,7 +1152,8 @@
     }
 
     recommendations.sort((a, b) => (
-      b.xpPerHour - a.xpPerHour
+      Number(a.lethal) - Number(b.lethal)
+      || b.xpPerHour - a.xpPerHour
       || a.requiredLevel - b.requiredLevel
       || a.slug.localeCompare(b.slug)
     ));

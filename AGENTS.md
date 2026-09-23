@@ -91,7 +91,7 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 - Aplica STAB 1,5x, efetividade do jogo 2,5x/5,5x e resistência 0,33x, além do bônus de combate do clã atual.
 - Selvagem sem golpe natural ofensivo recebe Tackle físico Normal de poder 40 como fallback de dano; golpes TM continuam ignorados.
 - Solicita `boosts-refresh`, lê a resposta `events` e aplica ao XP/h o percentual descrito no evento `type-of-day` somente quando o tipo da hunt corresponde. VIP e demais multiplicadores de XP da conta ficam fora do valor e isso deve permanecer explícito na interface; cada linha beneficiada mostra o emoji do evento ao lado do nome da hunt.
-- Ordena todas as hunts exclusivamente por XP/h, independentemente da letalidade. Exibe ataque, golpes por Pokémon, KOs/h, XP/h e letalidade; dano por golpe fica apenas no debug.
+- Ordena primeiro as hunts não letais e depois por XP/h dentro de cada grupo. Exibe ataque, golpes por Pokémon, KOs/h, XP/h e letalidade; dano por golpe fica apenas no debug.
 - Registra o botão no menu lateral compartilhado e persiste somente a posição do painel no `sessionStorage`.
 
 ### `iv-calculator.user.js`
