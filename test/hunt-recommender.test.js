@@ -228,6 +228,49 @@ test('aplica bônus de clã rank 5 aos atributos do Pokémon elegível', () => {
   assert.equal(withClan.clanMultiplier, 1.3);
 });
 
+test('permite power leveling em hunt acima do nível do Pokémon equipado', () => {
+  const data = fixtures();
+  const harness = createHarness();
+  const result = harness.api.calculate({
+    leader: { ...data.leader, level: 12 },
+    profile: { character: { level: 119 } },
+    creatures: data.creatures,
+    markers: [
+      marker('level-10', 'Leafling', 10),
+      marker('level-20', 'Leafling', 20),
+      marker('level-100', 'Aquabeast', 100),
+    ],
+  });
+
+  assert.deepEqual(
+    plain(result.recommendations.map((entry) => entry.slug).sort()),
+    ['level-10', 'level-100', 'level-20'],
+  );
+});
+
+test('usa Tackle físico de poder 40 quando o selvagem só possui TM', () => {
+  const data = fixtures();
+  const tmOnlyWild = creature({
+    pokeId: 5,
+    name: 'TM Only',
+    type1: 'PSYCHIC',
+    baseHp: 1_000,
+    baseDef: 1_000,
+    attacks: [move('TM Blast', 600, 'PSYCHIC', 'SPECIAL', 1, 'PSYCHIC')],
+  });
+  const harness = createHarness();
+  const result = harness.api.calculate({
+    leader: { ...data.leader, level: 12, maxHp: 1 },
+    profile: { character: { level: 119 } },
+    creatures: [...data.creatures, tmOnlyWild],
+    markers: [marker('tm-only', 'TM Only', 100)],
+  });
+  const recommendation = result.recommendations[0];
+
+  assert.ok(recommendation.incomingDamage > 0);
+  assert.equal(recommendation.lethal, true);
+});
+
 test('análise solicita pokes-get, usa respostas oficiais e permanece somente leitura', async () => {
   const data = fixtures();
   const harness = createHarness({

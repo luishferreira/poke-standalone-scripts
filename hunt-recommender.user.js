@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Hunt Recommender
 // @namespace    poke-manager
-// @version      1.0.0
+// @version      1.0.2
 // @description  Analisa o Pokémon equipado e indica as melhores hunts acessíveis por XP/h.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -704,6 +704,13 @@
   const WILD_ATTACK_INTERVAL_MS = 2_000;
   const MAX_VISIBLE_HUNTS = 15;
   const SUPPORTED_AREAS = new Set(['kanto', 'outland']);
+  const WILD_FALLBACK_MOVE = Object.freeze({
+    name: 'Tackle',
+    power: 40,
+    type: 'NORMAL',
+    category: 'PHYSICAL',
+    learnLevel: 1,
+  });
 
   const CLAN_TYPES = Object.freeze({
     ironhard: ['STEEL'],
@@ -1027,7 +1034,8 @@
       const xpPerKill = Math.max(0, Number(wild.experience) || 0);
       const xpPerHour = kosPerHour * xpPerKill;
 
-      const wildMoves = getUnlockedMoves(wild, marker.level)
+      const unlockedWildMoves = getUnlockedMoves(wild, marker.level);
+      const wildMoves = (unlockedWildMoves.length ? unlockedWildMoves : [WILD_FALLBACK_MOVE])
         .map((move) => ({ move, damage: predictWildMoveDamage(move, wild, marker, leader, leaderCreature, clanMultiplier) }))
         .sort((a, b) => b.damage - a.damage);
       const bestWildAttack = wildMoves[0] || null;
