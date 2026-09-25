@@ -271,6 +271,27 @@ test('permite power leveling em hunt acima do nível do Pokémon equipado', () =
   );
 });
 
+test('limita as hunts ao nível do Pokémon quando a opção está ativa', () => {
+  const data = fixtures();
+  const harness = createHarness();
+  const result = harness.api.calculate({
+    leader: { ...data.leader, level: 12 },
+    profile: { character: { level: 119 } },
+    creatures: data.creatures,
+    markers: [
+      marker('level-10', 'Leafling', 10),
+      marker('level-20', 'Leafling', 20),
+      marker('level-100', 'Aquabeast', 100),
+    ],
+    onlyPokemonLevel: true,
+  });
+
+  assert.deepEqual(
+    plain(result.recommendations.map((entry) => entry.slug)),
+    ['level-10'],
+  );
+});
+
 test('usa Tackle físico de poder 40 quando o selvagem só possui TM', () => {
   const data = fixtures();
   const tmOnlyWild = creature({
@@ -291,6 +312,75 @@ test('usa Tackle físico de poder 40 quando o selvagem só possui TM', () => {
   const recommendation = result.recommendations[0];
 
   assert.ok(recommendation.incomingDamage > 0);
+  assert.equal(recommendation.lethal, true);
+});
+
+test('calibra Furious Scyther pela taxa observada de 639 KOs por hora', () => {
+  const leaderSpecies = creature({
+    pokeId: 1,
+    name: 'Rock Tester',
+    type1: 'ROCK',
+    baseAtk: 200,
+    attacks: [move('Stone Edge', 100, 'ROCK', 'PHYSICAL')],
+  });
+  const scyther = creature({
+    pokeId: 10506,
+    name: 'Furious Scyther',
+    type1: 'BUG',
+    type2: 'FLYING',
+    baseHp: 70,
+    baseDef: 80,
+    experience: 13_508,
+    attacks: [move('X-Scissor', 80, 'BUG', 'PHYSICAL')],
+  });
+  const harness = createHarness();
+  const result = harness.api.calculate({
+    leader: {
+      speciesId: 1,
+      name: 'Rock Tester',
+      level: 400,
+      maxHp: 10_000,
+      stats: { hp: 10_000, atk: 10_000, def: 500, spAtk: 100, spDef: 500, speed: 1 },
+    },
+    profile: { character: { level: 400 } },
+    creatures: [leaderSpecies, scyther],
+    markers: [marker('furious_scyther', 'Furious Scyther', 150, 'outland', [2690, 3010, 2755, 3045, 7])],
+  });
+  const recommendation = result.recommendations[0];
+
+  assert.equal(recommendation.hits, 1);
+  assert.equal(recommendation.overheadMs, 5_634);
+  assert.equal(Math.round(recommendation.kosPerHour), 639);
+});
+
+test('contabiliza dois ataques recebidos quando a vitória exige três golpes', () => {
+  const dragonair = creature({
+    pokeId: 148,
+    name: 'Dragonair',
+    type1: 'DRAGON',
+    baseHp: 61,
+    baseAtk: 84,
+    baseDef: 65,
+    attacks: [move('Dragon Rush', 100, 'DRAGON', 'PHYSICAL')],
+  });
+  const harness = createHarness();
+  const result = harness.api.calculate({
+    leader: {
+      speciesId: 148,
+      name: 'Dragonair',
+      level: 60,
+      maxHp: 1_000,
+      stats: { hp: 1_000, atk: 150, def: 65, spAtk: 70, spDef: 70, speed: 70 },
+    },
+    profile: { character: { level: 100 } },
+    creatures: [dragonair],
+    markers: [marker('dragonair', 'Dragonair', 80, 'kanto', [3971, 4101, 4038, 4143, 5])],
+  });
+  const recommendation = result.recommendations[0];
+
+  assert.equal(recommendation.hits, 3);
+  assert.equal(recommendation.incomingHits, 2);
+  assert.ok(recommendation.incomingDamage / 2 < 1_000);
   assert.equal(recommendation.lethal, true);
 });
 

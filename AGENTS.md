@@ -86,14 +86,14 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 
 - Userscript próprio de análise, executado em `document-start` e exposto em `window.piwHuntRecommender`.
 - Usa o bridge para solicitar/receber `pokes` e eventos. A análise não altera a hunt nem envia ações de combate; somente o botão manual de cada linha pode trocar de hunt.
-- Cruza o líder equipado e `/api/characters/me` com `/game/creatures.json` e `/api/game/map-markers`; o nível do treinador limita hunts desbloqueadas, mas o nível do Pokémon não limita o ranking para permitir power leveling.
+- Cruza o líder equipado e `/api/characters/me` com `/game/creatures.json` e `/api/game/map-markers`; o nível do treinador sempre limita hunts desbloqueadas. O nível do Pokémon não limita o ranking por padrão para permitir power leveling, mas um checkbox persistido por aba pode excluir hunts acima dele.
 - A primeira versão considera somente Kanto e Outland e ignora Ditto, TMs, Orre e Nightmare.
 - Aplica STAB 1,5x, efetividade do jogo 2,5x/5,5x e resistência 0,33x, além do bônus de combate do clã atual.
 - Selvagem sem golpe natural ofensivo recebe Tackle físico Normal de poder 40 como fallback de dano; golpes TM continuam ignorados.
 - Solicita `boosts-refresh`, lê a resposta `events` e aplica ao XP/h o percentual descrito no evento `type-of-day` somente quando o tipo da hunt corresponde. VIP e demais multiplicadores de XP da conta ficam fora do valor e isso deve permanecer explícito na interface; cada linha beneficiada mostra o emoji do evento ao lado do nome da hunt.
 - O botão de entrada usa o marcador visual real (`data-guide="hunt-<slug>"`), percorre as áreas do mapa e aguarda o `enter-hunt` emitido pelo jogo, como o Auto Pokédex. Nunca envie `enter-hunt` diretamente. Bloqueie a troca quando Auto Pokédex ou Auto Boss estiverem ativos.
 - Ordena primeiro as hunts não letais e depois por XP/h dentro de cada grupo. Exibe ataque, golpes por Pokémon, KOs/h, XP/h e letalidade; dano por golpe fica apenas no debug.
-- Registra o botão no menu lateral compartilhado e persiste somente a posição do painel no `sessionStorage`.
+- Registra o botão no menu lateral compartilhado e persiste a posição do painel e a preferência de limite por nível no `sessionStorage`.
 
 ### `iv-calculator.user.js`
 

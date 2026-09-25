@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Hunt Recommender
 // @namespace    poke-manager
-// @version      1.0.9
+// @version      1.0.11
 // @description  Analisa o Pokémon equipado e indica as melhores hunts acessíveis por XP/h.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -31,6 +31,7 @@
   }
 
   const GAME_TOKENS_KEY = 'pokeweb:tokens';
+  const SETTINGS_KEY = 'piw-hunt-recommender-settings-v1';
   const CREATURES_URL = '/game/creatures.json';
   const MAP_MARKERS_URL = '/api/game/map-markers';
   const CHARACTER_URL = '/api/characters/me';
@@ -43,6 +44,9 @@
   const AREA_CHANGE_DELAY_MS = 250;
   const PLAYER_ATTACK_INTERVAL_MS = 1_600;
   const WILD_ATTACK_INTERVAL_MS = 2_000;
+  const HUNT_OVERHEAD_OVERRIDES_MS = Object.freeze({
+    furious_scyther: 5_634,
+  });
   const MAX_VISIBLE_HUNTS = 15;
   const SUPPORTED_AREAS = new Set(['kanto', 'outland']);
   const WILD_FALLBACK_MOVE = Object.freeze({
@@ -125,6 +129,23 @@
     FAIRY: { FIRE: 0.5, FIGHTING: 2, POISON: 0.5, DRAGON: 2, DARK: 2, STEEL: 0.5 },
   });
 
+  function loadSettings() {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(SETTINGS_KEY) || '{}');
+      return { onlyPokemonLevel: saved?.onlyPokemonLevel === true };
+    } catch {
+      return { onlyPokemonLevel: false };
+    }
+  }
+
+  function saveSettings() {
+    sessionStorage.setItem(SETTINGS_KEY, JSON.stringify({
+      onlyPokemonLevel: state.onlyPokemonLevel,
+    }));
+  }
+
+  const settings = loadSettings();
+
   const state = {
     installed: true,
     loading: false,
@@ -147,6 +168,7 @@
     navigationTimer: null,
     navigationResolve: null,
     huntEntryWaiter: null,
+    onlyPokemonLevel: settings.onlyPokemonLevel,
   };
 
   let unsubscribeBridge = null;
@@ -359,6 +381,8 @@
   }
 
   function getMapOverheadMs(marker) {
+    const observedOverhead = HUNT_OVERHEAD_OVERRIDES_MS[String(marker?.slug || '').trim().toLowerCase()];
+    if (Number.isFinite(observedOverhead)) return observedOverhead;
     const range = marker?.range;
     if (!Array.isArray(range) || range.length < 4) {
       return marker.area === 'outland' ? 4_818 : 5_219;
@@ -407,6 +431,7 @@
     creatures: rawCreatures,
     markers: rawMarkers,
     typeOfDay = null,
+    onlyPokemonLevel = false,
   }) {
     if (!leader?.stats) throw new Error('O Pokémon equipado não possui atributos completos.');
     const creatures = normalizeCreatures(rawCreatures);
@@ -435,7 +460,12 @@
         level: Math.floor(Number(rawMarker?.level) || 0),
       };
       if (!marker.slug || uniqueSlugs.has(marker.slug)) continue;
-      if (!SUPPORTED_AREAS.has(marker.area) || marker.level < 1 || marker.level > character.level) continue;
+      if (
+        !SUPPORTED_AREAS.has(marker.area)
+        || marker.level < 1
+        || marker.level > character.level
+        || (onlyPokemonLevel && marker.level > leaderLevel)
+      ) continue;
       const wild = findWildCreature(marker, creaturesByName);
       if (!wild) continue;
       uniqueSlugs.add(marker.slug);
@@ -467,7 +497,7 @@
         .map((move) => ({ move, damage: predictWildMoveDamage(move, wild, marker, leader, leaderCreature, clanMultiplier) }))
         .sort((a, b) => b.damage - a.damage);
       const bestWildAttack = wildMoves[0] || null;
-      const incomingHits = Math.floor(((hits - 1) * PLAYER_ATTACK_INTERVAL_MS) / WILD_ATTACK_INTERVAL_MS);
+      const incomingHits = Math.ceil(((hits - 1) * PLAYER_ATTACK_INTERVAL_MS) / WILD_ATTACK_INTERVAL_MS);
       const incomingDamage = incomingHits
         * Number(bestWildAttack?.damage || 0)
         * getIncomingDamageMargin(marker.area, marker.level);
@@ -774,6 +804,29 @@
     renderPanel();
   }
 
+  function applyCalculatedResults(calculated) {
+    state.character = calculated.character;
+    state.results = calculated.recommendations;
+    state.lastMessage = state.results.length
+      ? `${state.results.length} hunts ${state.onlyPokemonLevel ? 'até o nível do Pokémon ' : 'acessíveis '}analisadas.`
+      : 'Nenhuma hunt compatível foi encontrada.';
+    state.lastError = state.results.length === 0;
+  }
+
+  function recalculateWithCurrentData() {
+    if (!state.leader || !state.character || !state.creatures.length || !state.markers.length) return false;
+    const calculated = calculateRecommendations({
+      leader: state.leader,
+      profile: state.character,
+      creatures: state.creatures,
+      markers: state.markers,
+      typeOfDay: state.typeOfDay,
+      onlyPokemonLevel: state.onlyPokemonLevel,
+    });
+    applyCalculatedResults(calculated);
+    return true;
+  }
+
   async function analyze() {
     if (state.loading) return false;
     state.socket = bridge.getSocket();
@@ -801,14 +854,10 @@
         creatures: state.creatures,
         markers: state.markers,
         typeOfDay,
+        onlyPokemonLevel: state.onlyPokemonLevel,
       });
       state.leader = leader;
-      state.character = calculated.character;
-      state.results = calculated.recommendations;
-      state.lastMessage = state.results.length
-        ? `${state.results.length} hunts acessíveis analisadas.`
-        : 'Nenhuma hunt compatível foi encontrada.';
-      state.lastError = state.results.length === 0;
+      applyCalculatedResults(calculated);
       return state.results.length > 0;
     } catch (error) {
       state.results = [];
@@ -902,6 +951,7 @@
       navigating: state.navigating,
       navigationSlug: state.navigationSlug,
       typeOfDay: state.typeOfDay ? { ...state.typeOfDay } : null,
+      onlyPokemonLevel: state.onlyPokemonLevel,
       results: state.results.map((result) => ({ ...result })),
       best: best ? { ...best } : null,
       message: state.lastMessage,
@@ -1025,6 +1075,9 @@
     const refreshButton = panel.querySelector('.phr-refresh');
     refreshButton.disabled = state.loading || state.navigating;
     refreshButton.textContent = state.loading ? 'Analisando...' : 'Analisar novamente';
+    const levelFilter = panel.querySelector('[data-phr="level-filter"]');
+    levelFilter.checked = state.onlyPokemonLevel;
+    levelFilter.disabled = state.loading || state.navigating;
     renderResults(panel.querySelector('.phr-results'));
   }
 
@@ -1055,6 +1108,7 @@
           </div>
           <span class="phr-best-lethal" data-phr="best-lethal">—</span>
         </section>
+        <label class="phr-option"><input data-phr="level-filter" type="checkbox"> Considerar somente hunts até o nível do Pokémon</label>
         <button class="phr-refresh" type="button">Analisar</button>
         <div class="phr-head"><span>Hunt</span><span>Ataque</span><span>Hits</span><span>KOs/h</span><span>XP/h</span><span></span><span></span></div>
         <div class="phr-results"></div>
@@ -1068,6 +1122,17 @@
     });
     panel.querySelector('.phr-close').addEventListener('click', () => { panel.hidden = true; });
     panel.querySelector('.phr-refresh').addEventListener('click', analyze);
+    panel.querySelector('[data-phr="level-filter"]').addEventListener('change', (event) => {
+      state.onlyPokemonLevel = event.currentTarget.checked;
+      saveSettings();
+      try {
+        recalculateWithCurrentData();
+      } catch (error) {
+        state.lastMessage = error?.message || String(error);
+        state.lastError = true;
+      }
+      renderPanel();
+    });
     renderPanel();
   }
 
@@ -1123,6 +1188,9 @@
       #piw-hunt-recommender-panel .phr-best-grid b { color:#e2e8f0;font-size:13px; }
       #piw-hunt-recommender-panel .phr-best-lethal { color:#9ae6b4;font-weight:800; }
       #piw-hunt-recommender-panel .phr-best-lethal.is-lethal { color:#fc8181; }
+      #piw-hunt-recommender-panel .phr-option { display:flex;align-items:center;gap:7px;color:#cbd5e0;background:#101f2a;border:1px solid #20394b;border-radius:7px;padding:7px 9px;margin-bottom:8px;cursor:pointer; }
+      #piw-hunt-recommender-panel .phr-option input { margin:0;accent-color:#299263; }
+      #piw-hunt-recommender-panel .phr-option:has(input:disabled) { cursor:not-allowed;opacity:.6; }
       #piw-hunt-recommender-panel .phr-refresh { width:100%;margin-bottom:8px;background:#176342;border-color:#299263; }
       #piw-hunt-recommender-panel .phr-head,#piw-hunt-recommender-panel .phr-row { display:grid;grid-template-columns:minmax(120px,1.35fr) minmax(105px,1.2fr) 45px 58px 78px 48px 29px;gap:7px;align-items:center; }
       #piw-hunt-recommender-panel .phr-head { color:#718096;font-size:9px;text-transform:uppercase;padding:0 7px 4px; }
