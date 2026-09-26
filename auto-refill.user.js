@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Auto Refill
 // @namespace    poke-manager
-// @version      1.3.10
+// @version      1.3.15
 // @description  Reabastece potions e Pokébolas e pode vender loot comum e Pokémon fracos automaticamente.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
@@ -901,7 +901,7 @@
   const POKEMON_SELL_URL = '/api/game/pokemon/sell';
   const AUTH_REFRESH_URL = '/api/auth/refresh';
   const POTION_IDS = new Set([200, 201, 202, 203, 204]);
-  const PROTECTED_LOOT_IDS = new Set([19356]); // Fresh Herbs
+  const PROTECTED_LOOT_IDS = new Set([19354, 19356]); // Fresh Herbs, Wild Herbs
   const MAX_PURCHASE_QUANTITY = 10_000;
   const MAX_BATCH_QUANTITY = 1_000;
   const REFILL_DEBOUNCE_MS = 100;
@@ -909,6 +909,7 @@
   const REQUEST_TIMEOUT_MS = 12_000;
   const RETRY_DELAY_MS = 60_000;
   const RECENT_INVENTORY_MS = 60_000;
+  const RECENT_GOLD_MS = 5 * 60_000;
   const DEFAULT_SETTINGS = Object.freeze({
     enabled: false,
     potionEnabled: true,
@@ -997,6 +998,7 @@
     shopCatalog: null,
     itemsCatalogPromise: null,
     currentGold: null,
+    goldUpdatedAt: 0,
     lastMessage: settings.enabled ? 'Auto Refill ativo.' : 'Auto Refill pausado.',
     lastMessageIsError: false,
     lastResult: null,
@@ -1034,6 +1036,20 @@
     return value == null ? '—' : Number(value).toLocaleString('pt-BR');
   }
 
+  function setConfirmedGold(value) {
+    if (value == null) return false;
+    const gold = Number(value);
+    if (!Number.isSafeInteger(gold) || gold < 0) return false;
+    state.currentGold = gold;
+    state.goldUpdatedAt = Date.now();
+    return true;
+  }
+
+  function hasRecentGold() {
+    return state.currentGold != null && state.goldUpdatedAt > 0 &&
+      Date.now() - state.goldUpdatedAt <= RECENT_GOLD_MS;
+  }
+
   function canContinueCycle() {
     return state.installed && settings.enabled && bridge.isOpen() &&
       bridge.getSocket() === state.cycleSocket;
@@ -1047,6 +1063,8 @@
     state.ballsUpdatedAt = 0;
     state.potionStock = null;
     state.ballStock = null;
+    state.currentGold = null;
+    state.goldUpdatedAt = 0;
     renderPanel();
   }
 
@@ -1168,19 +1186,28 @@
         body: JSON.stringify({ items }),
       });
       const expectedCount = items.reduce((total, item) => total + item.qty, 0);
-      const ok = result?.ok === true && result?.soldKinds === items.length &&
-        result?.soldCount === expectedCount;
-      if (result?.gold != null && Number.isFinite(Number(result.gold))) state.currentGold = Number(result.gold);
+      const soldKinds = result?.soldKinds;
+      const soldCount = result?.soldCount;
+      const confirmed = result?.ok === true && Number.isInteger(soldKinds) &&
+        soldKinds >= 0 && soldKinds <= items.length && Number.isInteger(soldCount) &&
+        soldCount >= 0 && soldCount <= expectedCount;
+      const ok = confirmed && soldKinds === items.length && soldCount === expectedCount;
+      const partial = confirmed && !ok && (soldKinds > 0 || soldCount > 0);
+      setConfirmedGold(result?.gold);
       state.inventoryItems = null;
       state.inventoryUpdatedAt = 0;
       return {
         attempted: true,
         ok,
-        soldCount: normalizeNonNegativeInteger(result?.soldCount, 0),
+        reason: ok ? null : partial ? 'partial_sale' : 'unconfirmed_sale',
+        requestedKinds: items.length,
+        requestedCount: expectedCount,
+        soldKinds: confirmed ? soldKinds : null,
+        soldCount: confirmed ? soldCount : 0,
         goldGained: normalizeNonNegativeInteger(result?.goldGained, 0),
       };
     } catch (error) {
-      console.warn('[PIW Auto Refill] Venda de lixo falhou; ciclo interrompido.', {
+      console.warn('[PIW Auto Refill] Venda de lixo falhou.', {
         message: error?.message || String(error),
       });
       return { attempted: submitted, ok: false, soldCount: 0, error: error?.message || String(error) };
@@ -1225,8 +1252,10 @@
         incoming(event) {
           if (event.socket !== socket || event.message?.type !== type) return;
           const value = type === 'inventory' ? event.message.items
-            : type === 'pokes' ? event.message.list : event.message.counts;
-          if (type === 'balls' ? value && typeof value === 'object' : Array.isArray(value)) finish(value);
+            : type === 'pokes' ? event.message.list : event.message;
+          if (type === 'balls'
+            ? value.counts && typeof value.counts === 'object'
+            : Array.isArray(value)) finish(value);
         },
         close(event) { if (event.socket === socket) cancel(); },
         replaced(event) { if (event.previousSocket === socket) cancel(); },
@@ -1252,7 +1281,7 @@
       });
       const sold = Number(result?.sold);
       const ok = Number.isInteger(sold) && sold === pokeIds.length;
-      if (result?.gold != null && Number.isFinite(Number(result.gold))) state.currentGold = Number(result.gold);
+      setConfirmedGold(result?.gold);
       return {
         attempted: true,
         ok,
@@ -1280,13 +1309,14 @@
   }
 
   async function loadShop({ render = true } = {}) {
+    if (state.shopCatalog) return state.shopCatalog;
     if (state.shopLoadPromise) return state.shopLoadPromise;
     state.catalogLoading = true;
     if (render) renderPanel();
     state.shopLoadPromise = (async () => {
       const shop = normalizeShopCatalog(await gameApiRequest(SHOP_URL));
       state.shopCatalog = shop;
-      state.currentGold = shop.gold;
+      setConfirmedGold(shop.gold);
       populateProductSelectors();
       return shop;
     })();
@@ -1342,9 +1372,7 @@
 
       const batchBought = normalizeNonNegativeInteger(result?.bought, 0);
       bought += Math.min(batch, batchBought);
-      if (result?.gold != null && Number.isFinite(Number(result.gold)) && Number(result.gold) >= 0) {
-        state.currentGold = Math.max(0, Number(result.gold));
-      } else {
+      if (!setConfirmedGold(result?.gold)) {
         reason = 'missing_gold_confirmation';
         break;
       }
@@ -1406,10 +1434,17 @@
     const cycleResult = { trash: null, pokemon: null, potion: null, ball: null };
     let mutationStarted = false;
     try {
-      if (needsBall && (!state.ballsUpdatedAt || Date.now() - state.ballsUpdatedAt > RECENT_INVENTORY_MS)) {
-        const counts = await requestSnapshot('balls', 'balls-get');
+      if ((needsBall && (!state.ballsUpdatedAt || Date.now() - state.ballsUpdatedAt > RECENT_INVENTORY_MS)) ||
+        (state.shopCatalog && !hasRecentGold())) {
+        const balls = await requestSnapshot('balls', 'balls-get');
         if (!canContinueCycle()) return false;
-        updateBallStock(counts);
+        updateBallStock(balls.counts, balls.gold);
+      }
+      if (state.shopCatalog && !hasRecentGold()) {
+        state.lastResult = { error: 'Saldo do jogo indisponível.' };
+        state.needsAttention = true;
+        setMessage('Saldo do jogo indisponível após balls-get. Tente novamente pelo painel.', true);
+        return false;
       }
       if (settings.sellTrash) {
         setMessage('Atualizando inventário antes da venda...');
@@ -1429,13 +1464,11 @@
       cycleResult.trash = await sellTrashIfEnabled();
       mutationStarted ||= cycleResult.trash.attempted;
       if (!canContinueCycle()) throw new Error('Automação pausada durante a venda de loot.');
-      if (cycleResult.trash.ok) {
-        cycleResult.pokemon = await sellPokemonIfEnabled();
-        mutationStarted ||= cycleResult.pokemon.attempted;
-        if (!canContinueCycle()) throw new Error('Automação pausada durante a venda de Pokémon.');
-      }
+      cycleResult.pokemon = await sellPokemonIfEnabled();
+      mutationStarted ||= cycleResult.pokemon.attempted;
+      if (!canContinueCycle()) throw new Error('Automação pausada durante a venda de Pokémon.');
       // Falhas de venda ficam registradas no resultado, mas não impedem o refill.
-      // A loja fornece o gold atualizado antes de qualquer compra.
+      // O catálogo é reutilizado; o saldo vem das mensagens do jogo e das respostas das operações.
       const shop = await loadShop({ render: false });
       if (!canContinueCycle()) return false;
 
@@ -1475,10 +1508,13 @@
         .some((result) => !result.ok);
       const trashWarning = cycleResult.trash?.ok === false;
       const pokemonWarning = cycleResult.pokemon?.ok === false;
+      const trashWarningText = cycleResult.trash?.reason === 'partial_sale'
+        ? ` · Venda de loot parcial: ${formatNumber(cycleResult.trash.soldCount)}/${formatNumber(cycleResult.trash.requestedCount)} unidades (${formatNumber(cycleResult.trash.soldKinds)}/${formatNumber(cycleResult.trash.requestedKinds)} tipos).`
+        : trashWarning ? ' · Venda de lixo falhou.' : '';
       setMessage(
         `${summaries.join(' · ') || 'Nenhuma compra realizada.'}` +
           ` · Gold: ${formatNumber(state.currentGold)}` +
-          (trashWarning ? ' · Venda de lixo falhou.' : '') +
+          trashWarningText +
           (pokemonWarning ? ' · Venda de Pokémon falhou.' : '') +
           (cycleResult.pokemon?.soldCount ? ` · Pokémon vendidos: ${formatNumber(cycleResult.pokemon.soldCount)}` : ''),
         incomplete || trashWarning || pokemonWarning,
@@ -1547,10 +1583,11 @@
     renderPanel();
   }
 
-  function updateBallStock(counts) {
+  function updateBallStock(counts, gold) {
     state.ballCounts = { ...counts };
     state.ballsUpdatedAt = Date.now();
     state.ballStock = normalizeNonNegativeInteger(counts?.[settings.ballId], 0);
+    setConfirmedGold(gold);
     updateCategoryArming('ball');
     scheduleRefillCheck();
     renderPanel();
@@ -1560,7 +1597,7 @@
     if (message?.type === 'inventory' && Array.isArray(message.items)) {
       updatePotionStock(message.items);
     } else if (message?.type === 'balls' && message.counts && typeof message.counts === 'object') {
-      updateBallStock(message.counts);
+      updateBallStock(message.counts, message.gold);
     }
   }
 
@@ -1791,7 +1828,7 @@
         </fieldset>
         <fieldset class="par-economy">
           <legend>Economia</legend>
-          <label class="par-check par-danger"><input id="par-sell-trash" type="checkbox"> Vender loot NPC de 1 a 4.000 gold (exceto Fresh Herbs)</label>
+          <label class="par-check par-danger"><input id="par-sell-trash" type="checkbox"> Vender loot NPC de 1 a 4.000 gold</label>
           <label class="par-check par-danger"><input id="par-sell-pokemon" type="checkbox"> Vender Pokémon automaticamente</label>
           <label>Vender até IV <input id="par-pokemon-max-iv" type="number" min="0" max="192" step="1"></label>
           <p class="par-muted">Nunca vende level acima de 100 ou desconhecido, quality acima de 1,7, shiny, starter, Pokémon no time, protegido ou listado.</p>

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PokeDream Auto Refill
 // @namespace    poke-manager
-// @version      2.6.1
+// @version      2.6.2
 // @description  Protege itens, vende o loot restante e repõe balls e potions configuráveis pela fila oficial do jogo.
 // @author       Luis
 // @match        https://pokedream.com.br/*
@@ -1266,10 +1266,7 @@
     toggle.className = 'pdr-toggle';
     toggle.addEventListener('click', () => {
       if (state.enabled) return void stop();
-      const confirmed = window.confirm(
-        'Ativar o Auto Refill? Quando necessário, a fila oficial poderá bloquear os itens protegidos, vender somente o loot desbloqueado e comprar até 1.000 unidades de cada produto configurado.',
-      );
-      if (confirmed) start({ confirmed: true });
+      start({ confirmed: true });
     });
     const rearmButton = document.createElement('button');
     rearmButton.type = 'button';

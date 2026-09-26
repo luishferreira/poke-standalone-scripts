@@ -64,9 +64,9 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 - Permanece dentro da hunt. Quando ambas as categorias precisam de refill, potion é comprada antes de ball.
 - Antes de cada lote, preserva apenas a reserva de gold configurada. Potions são compradas antes das balls. Resposta parcial, falta de gold, erro ou confirmação incompleta interrompem os lotes restantes.
 - Cada categoria é desarmada antes do ciclo. Depois de uma tentativa, só rearma automaticamente quando o estoque observado sobe acima do threshold; o usuário também pode rearmar manualmente.
-- Venda de lixo é opcional e ocorre antes da consulta da loja. A ativação explícita da automação com essa opção marcada autoriza vender toda a quantidade de itens `loot` com `npcPrice` entre 1 e 4.000, exceto Fresh Herbs (ID 19356). Itens com `npcPrice` zero não são vendidos.
+- Venda de lixo é opcional e ocorre antes da consulta da loja. A ativação explícita da automação com essa opção marcada autoriza vender toda a quantidade de itens `loot` com `npcPrice` entre 1 e 4.000, exceto Fresh Herbs (ID 19354) e Wild Herbs (ID 19356). Itens com `npcPrice` zero não são vendidos. A resposta pode confirmar venda parcial; exiba as contagens sem repetir a operação automaticamente.
 - Venda automática de Pokémon é opt-in, tem limite máximo de IV configurável (inclusivo) e nunca vende level acima de 100 ou ausente, nem quality acima de 1,7; exclui time, starter, shiny, protegidos e listados. Usa `pokes-get` fresco e `POST /api/game/pokemon/sell` sem confirmação por venda, conforme escolha explícita do usuário para operação noturna.
-- Falha de venda não bloqueia refill: o script consulta o gold atualizado na loja antes das compras, preserva o aviso da venda e não a repete automaticamente. Tentativa automática de novo ciclo só ocorre quando a falha foi antes de qualquer request de mutação. Após envio de compra ou venda incerto, exige retry manual para não duplicar a operação.
+- Falha de venda não bloqueia refill: o script usa o gold da primeira consulta da loja e depois aproveita `balls.gold` recebido passivamente; se o saldo estiver antigo, pede um `balls-get` somente durante o refill. Preserva o aviso da venda e não a repete automaticamente. Tentativa automática de novo ciclo só ocorre quando a falha foi antes de qualquer request de mutação. Após envio de compra ou venda incerto, exige retry manual para não duplicar a operação.
 - Usa `GET /api/game/shop`, `POST /api/game/shop/buy`, `POST /api/game/shop/sell`, `POST /api/game/pokemon/sell`, `/game/items.json` e o refresh autenticado já observado. Nunca registre tokens nem o inventário completo.
 - Configuração fica em `piw-auto-refill-settings-v1`; API pública fica em `window.piwAutoRefill`.
 - Resumo e Configurações são vistas do mesmo painel, com posição/tamanho persistidos separadamente por aba. A vista de configurações usa altura proporcional à viewport, limitada a 720 px, e continua arrastável/redimensionável.
@@ -208,7 +208,7 @@ O mesmo módulo expõe `makePanelDraggable`, que também habilita redimensioname
 - Operações de venda, compra, lock, depot e mercado são destrutivas. Exija confirmação na UI, exceto no Auto Refill explicitamente configurado e ativado para operar sem confirmação por venda durante a noite. Nunca use essas operações como “teste” de integração.
 - Requests de inventário/Pokémon devem reutilizar snapshots quando forem apenas exibição, mas buscar um snapshot fresco antes de uma operação destrutiva quando o fluxo permitir.
 - Evite polling de APIs. Prefira mensagens que o jogo já recebe normalmente, refresh manual ou cache com invalidação explícita.
-- Auto Refill autentica chamadas same-origin com `sessionStorage['pokeweb:tokens']`, tenta exatamente um refresh em 401 e valida o gold retornado pela loja e por cada lote antes de continuar.
+- Auto Refill autentica chamadas same-origin com `sessionStorage['pokeweb:tokens']`, tenta exatamente um refresh em 401 e valida o gold retornado pela loja na primeira consulta, por `balls` nos ciclos seguintes e por cada lote antes de continuar.
 
 ## Contratos WebSocket conhecidos
 
@@ -225,7 +225,7 @@ Só use estes contratos conforme já observados; ainda valide mudanças futuras 
 - Catch VIP server-side usa `catch-result` com `auto: true`; no sucesso também chega `poke-delta`.
 - Atividade de hunt inclui `field`, `field-init`, `field-kill`, `poke-xp`, `pending` e `catch-result`.
 - Boss usa dados observados em `field.fainted`, `field.bossOutcome`, `field.bossLoot` e `field.mobs`.
-- Refill soma as potions conhecidas (IDs 200–204) de `inventory.items` para decidir a compra da potion configurada; usa `balls.counts` para o estoque da ball selecionada.
+- Refill soma as potions conhecidas (IDs 200–204) de `inventory.items` para decidir a compra da potion configurada; usa `balls.counts` para o estoque da ball selecionada e `balls.gold` para o saldo.
 
 Eventos frequentes como `pending`, `field`, `field-kill` e `poke-xp` servem para estado local. Não responda a todos com uma nova request.
 
