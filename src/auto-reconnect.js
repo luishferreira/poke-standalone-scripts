@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Auto reconnect
 // @namespace    http://tampermonkey.net/
-// @version      2026-09-23.1
+// @version      2026-09-23.2
 // @description  auto reconecta e pula mega sableye
 // @author       Luis
 // @match        https://poke.idleworld.online/play

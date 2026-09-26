@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PokeDream Auto Refill
 // @namespace    poke-manager
-// @version      2.7.1
+// @version      2.8.0
 // @description  Protege itens, vende o loot restante e repõe balls e potions configuráveis pela fila oficial do jogo.
 // @author       Luis
 // @match        https://pokedream.com.br/*
@@ -25,6 +25,9 @@
 
   const SETTINGS_KEY = 'pokedream-auto-refill-settings-v2';
   const RUNTIME_KEY = 'pokedream-auto-refill-runtime-v1';
+  const panelInteraction = window.pokeScripts.panelInteraction;
+  let disposePanelInteraction = null;
+  let disposeProtectionInteraction = null;
   const SMALL_POTION_ID = 'small_potion';
   const POKE_BALL_ID = 'poke_ball';
   const SHINY_PRESET_ITEM_IDS = Object.freeze([
@@ -1010,7 +1013,7 @@
       #pdr-auto-refill-panel[hidden], #pdr-protection-panel[hidden] { display:none!important; }
       #pdr-auto-refill-panel { position:fixed;right:18px;top:86px;z-index:10050;width:350px;max-width:calc(100vw - 24px);max-height:82vh;overflow:auto;background:#141721;color:#f4f4f5;border:1px solid #596070;border-radius:12px;box-shadow:0 18px 55px rgba(0,0,0,.72);font:13px/1.35 system-ui,sans-serif; }
       #pdr-auto-refill-panel.pdr-settings-view { width:560px; }
-      #pdr-protection-panel { position:fixed;right:calc(560px + 26px);top:86px;z-index:10051;width:360px;max-width:calc(100vw - 24px);max-height:82vh;overflow:auto;background:#141721;color:#f4f4f5;border:1px solid #596070;border-radius:12px;box-shadow:0 18px 55px rgba(0,0,0,.72);font:13px/1.35 system-ui,sans-serif; }
+      #pdr-protection-panel { position:fixed;left:var(--pdr-protection-left,auto);right:var(--pdr-protection-right,calc(560px + 26px));top:var(--pdr-protection-top,86px);z-index:10051;width:360px;max-width:calc(100vw - 24px);max-height:82vh;overflow:auto;background:#141721;color:#f4f4f5;border:1px solid #596070;border-radius:12px;box-shadow:0 18px 55px rgba(0,0,0,.72);font:13px/1.35 system-ui,sans-serif; }
       #pdr-auto-refill-panel header { display:flex;align-items:center;gap:8px;padding:10px 12px;background:#202532;border-bottom:1px solid #3b4252;color:#facc15;font-weight:800; }
       #pdr-protection-panel header { display:flex;align-items:center;gap:8px;padding:10px 12px;background:#202532;border-bottom:1px solid #3b4252;color:#facc15;font-weight:800; }
       #pdr-auto-refill-panel header span { flex:1; }
@@ -1078,8 +1081,8 @@
       #pdr-auto-refill-panel .pdr-actions { display:grid;grid-template-columns:1fr;gap:7px;margin-top:9px; }
       #pdr-auto-refill-panel .pdr-toggle { background:#17643f;border-color:#2f9e68; }
       #pdr-auto-refill-panel .pdr-toggle.pdr-stop { background:#71332f;border-color:#a84c45; }
-      @media (max-width:980px) { #pdr-protection-panel { right:18px;z-index:10052; } }
-      @media (max-width:600px) { #pdr-auto-refill-panel, #pdr-protection-panel { right:8px;top:64px;width:calc(100vw - 16px); } #pdr-auto-refill-panel .pdr-settings-grid { grid-template-columns:1fr; } }
+      @media (max-width:980px) { #pdr-protection-panel { right:var(--pdr-protection-right,18px);z-index:10052; } }
+      @media (max-width:600px) { #pdr-auto-refill-panel, #pdr-protection-panel { right:8px;top:64px;width:calc(100vw - 16px); } #pdr-protection-panel { right:var(--pdr-protection-right,8px);top:var(--pdr-protection-top,64px); } #pdr-auto-refill-panel .pdr-settings-grid { grid-template-columns:1fr; } }
     `;
     (document.head || document.documentElement)?.appendChild(style);
   }
@@ -1089,6 +1092,8 @@
     const existingPanel = document.querySelector('#pdr-auto-refill-panel');
     const existingProtectionPanel = document.querySelector('#pdr-protection-panel');
     if (existingPanel && existingProtectionPanel) return;
+    disposePanelInteraction?.();
+    disposeProtectionInteraction?.();
     existingPanel?.remove();
     existingProtectionPanel?.remove();
     const panel = document.createElement('section');
@@ -1287,10 +1292,40 @@
     protectionPanel.append(protectionHeader, protectionBody);
     openProtectionButton.addEventListener('click', () => {
       protectionPanel.hidden = !protectionPanel.hidden;
+      if (!protectionPanel.hidden) {
+        const mainRect = panel.getBoundingClientRect();
+        const protectionRect = protectionPanel.getBoundingClientRect();
+        const width = protectionRect.width;
+        const viewportWidth = window.innerWidth;
+        const left = mainRect.left >= width + 16
+          ? mainRect.left - width - 8
+          : (mainRect.right + width + 16 <= viewportWidth
+            ? mainRect.right + 8
+            : Math.max(8, Math.min(mainRect.left, viewportWidth - width - 8)));
+        protectionPanel.style.setProperty('--pdr-protection-left', `${left}px`);
+        protectionPanel.style.setProperty('--pdr-protection-right', 'auto');
+        const top = Math.max(8, Math.min(mainRect.top, window.innerHeight - protectionRect.height - 8));
+        protectionPanel.style.setProperty('--pdr-protection-top', `${top}px`);
+      }
       if (!protectionPanel.hidden && !state.enabled && !state.cycleRunning) protectionInput.focus();
     });
+    const attachMainInteraction = (view) => {
+      disposePanelInteraction = panelInteraction.makePanelDraggable(panel, {
+        storageKey: `pokedream-auto-refill-${view}-position-v1`,
+        sizeStorageKey: `pokedream-auto-refill-${view}-size-v1`,
+        minWidth: view === 'settings' ? 320 : 280,
+        minHeight: 200,
+      });
+    };
     const setPanelView = (view) => {
       const showSettings = view === 'settings';
+      if (panel.dataset.pdrView !== view) {
+        disposePanelInteraction?.();
+        panel.removeAttribute('style');
+        panel.classList.toggle('pdr-settings-view', showSettings);
+        panel.dataset.pdrView = view;
+        attachMainInteraction(view);
+      }
       summaryView.hidden = showSettings;
       settingsView.hidden = !showSettings;
       panel.classList.toggle('pdr-settings-view', showSettings);
@@ -1322,6 +1357,14 @@
     panel.append(header, body);
     document.body.append(panel, protectionPanel);
     panel.setPanelView = setPanelView;
+    panel.dataset.pdrView = 'summary';
+    attachMainInteraction('summary');
+    disposeProtectionInteraction = panelInteraction.makePanelDraggable(protectionPanel, {
+      storageKey: 'pokedream-auto-refill-protection-position-v1',
+      sizeStorageKey: 'pokedream-auto-refill-protection-size-v1',
+      minWidth: 280,
+      minHeight: 200,
+    });
 
     const bind = (selector, event, handler) => {
       panel.querySelector(selector)?.addEventListener(event, handler);
@@ -1682,6 +1725,10 @@
     if (!state.installed) return false;
     stop();
     state.installed = false;
+    disposePanelInteraction?.();
+    disposeProtectionInteraction?.();
+    disposePanelInteraction = null;
+    disposeProtectionInteraction = null;
     if (state.adapterTimer) clearTimeout(state.adapterTimer);
     if (state.interfaceTimer) clearTimeout(state.interfaceTimer);
     state.adapterTimer = null;

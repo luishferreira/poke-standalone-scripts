@@ -4,9 +4,11 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'shared', 'ui-menu.js'), 'utf8');
+const panelSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'shared', 'panel-interaction.js'), 'utf8');
+const menuSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'shared', 'ui-menu.js'), 'utf8');
+const source = `${panelSource}\n${menuSource}`;
 
-function createDomHarness({ withQolSidebar = false } = {}) {
+function createDomHarness({ withQolSidebar = false, engineOnly = false } = {}) {
   const timers = [];
   const observers = [];
   const documentListeners = new Map();
@@ -182,7 +184,7 @@ function createDomHarness({ withQolSidebar = false } = {}) {
     body.appendChild(sidebar);
   }
 
-  vm.runInNewContext(source, context);
+  vm.runInNewContext(engineOnly ? panelSource : source, context);
 
   function flush() {
     while (timers.length) timers.shift()();
@@ -205,9 +207,41 @@ function createDomHarness({ withQolSidebar = false } = {}) {
     flush,
     mutate,
     storage,
-    runAgain: () => vm.runInNewContext(source, context),
+    runAgain: () => vm.runInNewContext(engineOnly ? panelSource : source, context),
   };
 }
+
+test('módulo de painéis é independente do PIW e restaura perfis separados', () => {
+  const harness = createDomHarness({ engineOnly: true });
+  assert.equal(harness.context.piwScripts, undefined);
+  assert.equal(harness.document.getElementById('script-sidebar'), null);
+  const api = harness.context.pokeScripts.panelInteraction;
+  harness.runAgain();
+  assert.equal(harness.context.pokeScripts.panelInteraction, api);
+  const panel = harness.document.createElement('section');
+  panel.offsetWidth = 350;
+  panel.offsetHeight = 300;
+  panel.append(harness.document.createElement('header'), harness.document.createElement('div'));
+  harness.document.body.append(panel);
+  harness.storage.set('summary-pos', JSON.stringify({ left: 40, top: 50 }));
+  harness.storage.set('summary-size', JSON.stringify({ width: 370, height: 320 }));
+  harness.storage.set('settings-pos', JSON.stringify({ left: 100, top: 80 }));
+  harness.storage.set('settings-size', JSON.stringify({ width: 560, height: 500 }));
+  let cleanup = api.makePanelDraggable(panel, { storageKey: 'summary-pos', sizeStorageKey: 'summary-size' });
+  assert.equal(panel.style.width, '370px');
+  assert.equal(panel.style.left, '40px');
+  cleanup();
+  cleanup = api.makePanelDraggable(panel, { storageKey: 'settings-pos', sizeStorageKey: 'settings-size' });
+  assert.equal(panel.style.width, '560px');
+  assert.equal(panel.style.left, '100px');
+  cleanup();
+  cleanup = api.makePanelDraggable(panel, { storageKey: 'summary-pos', sizeStorageKey: 'summary-size' });
+  assert.equal(panel.style.width, '370px');
+  assert.equal(panel.style.left, '40px');
+  assert.equal(panel.children.filter((child) => child.dataset.piwResizeHandle === 'true').length, 1);
+  assert.equal(cleanup(), true);
+  assert.equal(cleanup(), false);
+});
 
 test('cria a própria sidebar quando o PIW-QOL não existe', () => {
   const harness = createDomHarness();

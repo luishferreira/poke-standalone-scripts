@@ -3,7 +3,7 @@
 module.exports = {
   // Módulos globais são incorporados, nesta ordem, antes de todas as features.
   // Entradas também podem declarar sua própria lista shared para rollout gradual.
-  shared: [],
+  shared: ['src/shared/panel-interaction.js'],
   userscripts: [
     {
       input: 'src/auto-catch.js',

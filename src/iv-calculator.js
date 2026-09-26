@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW IV Calculator
 // @namespace    poke-manager
-// @version      1.0.3
+// @version      1.0.4
 // @description  Calcula os IVs dos Pokémon atualmente equipados no Poke Idle World.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*

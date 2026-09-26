@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Auto Catch
 // @namespace    poke-manager
-// @version      1.7.1
+// @version      1.7.2
 // @description  Captura automaticamente os Pokémon pendentes usando o WebSocket do jogo.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*

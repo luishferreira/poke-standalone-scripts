@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Auto Pokédex
 // @namespace    poke-manager
-// @version      1.1.3
+// @version      1.1.4
 // @description  Percorre automaticamente as hunts acessíveis até completar as capturas pendentes da Pokédex.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*

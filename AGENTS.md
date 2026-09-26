@@ -121,6 +121,7 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 - Cada chamada só conta como enfileirada quando a action correspondente aparece no `actionLog` com `seq` novo. Falha ou confirmação parcial interrompe o ciclo e mantém as categorias afetadas desarmadas; não acrescente retry próprio por fora da fila oficial.
 - Se uma atualização mudar o contrato esperado, falhe fechado, pause a automação e mostre incompatibilidade em vez de tentar nomes ou campos por hipótese.
 - Configuração fica em `pokedream-auto-refill-settings-v2`, e a intenção de retomada/ciclo pendente em `pokedream-auto-refill-runtime-v1`, ambos no `sessionStorage`; API pública fica em `window.pokedreamAutoRefill`.
+- Resumo, Configurações e Itens protegidos têm posição/tamanho separados no `sessionStorage`, com prefixo `pokedream-auto-refill-`. O módulo neutro `panel-interaction.js` move/redimensiona os painéis sem menu ou bridge do PIW; seus cleanups devem rodar ao recriar, trocar vista ou desinstalar.
 
 ### `piw-qol.js` — referência externa somente leitura
 
@@ -167,7 +168,7 @@ O bridge por si só é passivo: instalar não abre conexão nem envia mensagens.
 
 `src/shared/ui-menu.js` implementa `window.piwScripts.uiMenu` v1. Os sete scripts registram seus botões nele e removem somente o próprio registro no uninstall. O módulo reutiliza o `#script-sidebar` do PIW-QOL quando presente e cria uma sidebar equivalente quando ausente; essa coexistência é apenas pelo contêiner DOM, sem chamar funções internas nem acessar configurações do QOL. A ordem de carregamento deve funcionar nos dois sentidos.
 
-O mesmo módulo expõe `makePanelDraggable`, que também habilita redimensionamento quando recebe `sizeStorageKey`. Os sete painéis próprios do PIW usam o cabeçalho para mover e o canto inferior direito para redimensionar, persistem posição/tamanho individualmente no `sessionStorage`, limitam ambos ao viewport e restauram o padrão com duplo clique na alça correspondente. Ao recriar ou desinstalar um painel, execute o cleanup retornado para não acumular listeners de resize/pointer.
+O mesmo módulo expõe `makePanelDraggable`, delegando ao módulo neutro `panel-interaction.js` (`window.pokeScripts.panelInteraction`), que também habilita redimensionamento quando recebe `sizeStorageKey`. Os sete painéis próprios do PIW usam o cabeçalho para mover e o canto inferior direito para redimensionar, persistem posição/tamanho individualmente no `sessionStorage`, limitam ambos ao viewport e restauram o padrão com duplo clique na alça correspondente. Ao recriar ou desinstalar um painel, execute o cleanup retornado para não acumular listeners de resize/pointer.
 
 ## Estado e persistência no navegador
 

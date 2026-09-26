@@ -18,6 +18,8 @@ Com o repositório público, abra o script desejado e confirme a instalação no
 
 ### PokeDream
 
+Os painéis do Auto Refill podem ser movidos pelo cabeçalho e redimensionados pelo canto inferior direito. Posição e tamanho são salvos por aba, separadamente para Resumo, Configurações e Itens protegidos. Duplo clique no cabeçalho restaura a posição; no canto, restaura o tamanho.
+
 - [Instalar PokeDream Auto Refill](https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/pokedream-auto-refill.user.js)
 
 Os scripts verificam atualizações usando esses mesmos endereços. Uma atualização só é reconhecida pelo Tampermonkey quando o campo `@version` do userscript aumenta.

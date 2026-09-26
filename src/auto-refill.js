@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PIW Auto Refill
 // @namespace    poke-manager
-// @version      1.3.15
+// @version      1.3.16
 // @description  Reabastece potions e Pokébolas e pode vender loot comum e Pokémon fracos automaticamente.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
