@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PIW Auto Refill
 // @namespace    poke-manager
-// @version      1.2.1
-// @description  Reabastece potions e Pokébolas com limites configuráveis e venda opcional de loot comum.
+// @version      1.3.10
+// @description  Reabastece potions e Pokébolas e pode vender loot comum e Pokémon fracos automaticamente.
 // @author       Luis
 // @match        https://poke.idleworld.online/play*
 // @updateURL    https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/auto-refill.user.js
@@ -898,10 +898,17 @@
   const SHOP_URL = '/api/game/shop';
   const SHOP_BUY_URL = '/api/game/shop/buy';
   const SHOP_SELL_URL = '/api/game/shop/sell';
+  const POKEMON_SELL_URL = '/api/game/pokemon/sell';
   const AUTH_REFRESH_URL = '/api/auth/refresh';
+  const POTION_IDS = new Set([200, 201, 202, 203, 204]);
+  const PROTECTED_LOOT_IDS = new Set([19356]); // Fresh Herbs
   const MAX_PURCHASE_QUANTITY = 10_000;
   const MAX_BATCH_QUANTITY = 1_000;
   const REFILL_DEBOUNCE_MS = 100;
+  const SNAPSHOT_TIMEOUT_MS = 5_000;
+  const REQUEST_TIMEOUT_MS = 12_000;
+  const RETRY_DELAY_MS = 60_000;
+  const RECENT_INVENTORY_MS = 60_000;
   const DEFAULT_SETTINGS = Object.freeze({
     enabled: false,
     potionEnabled: true,
@@ -913,6 +920,8 @@
     ballThreshold: 50,
     ballQuantity: 1_000,
     sellTrash: false,
+    sellPokemon: false,
+    pokemonMaxIv: 160,
     goldReserve: 0,
   });
 
@@ -931,6 +940,12 @@
     return quantity >= 1 && quantity <= MAX_PURCHASE_QUANTITY ? quantity : fallback;
   }
 
+  function normalizePokemonMaxIv(value, fallback) {
+    if (value == null || value === '') return fallback;
+    const maxIv = Number(value);
+    return Number.isInteger(maxIv) && maxIv >= 0 && maxIv <= 192 ? maxIv : fallback;
+  }
+
   function normalizeSettings(input = {}) {
     return {
       enabled: input.enabled === true,
@@ -943,6 +958,8 @@
       ballThreshold: normalizeNonNegativeInteger(input.ballThreshold, DEFAULT_SETTINGS.ballThreshold),
       ballQuantity: normalizePurchaseQuantity(input.ballQuantity, DEFAULT_SETTINGS.ballQuantity),
       sellTrash: input.sellTrash === true,
+      sellPokemon: input.sellPokemon === true,
+      pokemonMaxIv: normalizePokemonMaxIv(input.pokemonMaxIv, DEFAULT_SETTINGS.pokemonMaxIv),
       goldReserve: normalizeNonNegativeInteger(input.goldReserve, DEFAULT_SETTINGS.goldReserve),
     };
   }
@@ -961,27 +978,34 @@
     installed: true,
     socket: bridge.getSocket(),
     inventoryItems: null,
+    inventoryUpdatedAt: 0,
     ballCounts: null,
+    ballsUpdatedAt: 0,
     potionStock: null,
     ballStock: null,
     potionArmed: true,
     ballArmed: true,
     cycleRunning: false,
     cycleTimer: null,
+    retryTimer: null,
+    retryNotBefore: 0,
+    pendingSnapshots: new Set(),
+    cycleSocket: null,
+    needsAttention: false,
     catalogLoading: false,
     shopLoadPromise: null,
     shopCatalog: null,
     itemsCatalogPromise: null,
     currentGold: null,
-    lastMessage: settings.enabled
-      ? 'Aguardando estoque do jogo.'
-      : 'Auto Refill pausado.',
+    lastMessage: settings.enabled ? 'Auto Refill ativo.' : 'Auto Refill pausado.',
+    lastMessageIsError: false,
     lastResult: null,
   };
   let unsubscribeBridge = null;
   let unregisterMenu = null;
   let interfaceObserver = null;
   let disposePanelDrag = null;
+  let compactPanelStyle = null;
   let observerTimer = null;
 
   function saveSettings() {
@@ -999,15 +1023,31 @@
 
   function setMessage(message, isError = false) {
     state.lastMessage = String(message || '');
-    const element = document.querySelector('#piw-auto-refill-panel .par-status');
-    if (element) {
+    state.lastMessageIsError = isError;
+    document.querySelectorAll('#piw-auto-refill-panel .par-status').forEach((element) => {
       element.textContent = state.lastMessage;
       element.classList.toggle('par-error', isError);
-    }
+    });
   }
 
   function formatNumber(value) {
     return value == null ? '—' : Number(value).toLocaleString('pt-BR');
+  }
+
+  function canContinueCycle() {
+    return state.installed && settings.enabled && bridge.isOpen() &&
+      bridge.getSocket() === state.cycleSocket;
+  }
+
+  function invalidateSocketSnapshots() {
+    for (const cancel of [...state.pendingSnapshots]) cancel();
+    state.inventoryItems = null;
+    state.inventoryUpdatedAt = 0;
+    state.ballCounts = null;
+    state.ballsUpdatedAt = 0;
+    state.potionStock = null;
+    state.ballStock = null;
+    renderPanel();
   }
 
   function getGameTokens() {
@@ -1018,10 +1058,20 @@
     }
   }
 
+  async function timedFetch(url, options = {}) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async function refreshGameAccessToken() {
     const tokens = getGameTokens();
     if (!tokens?.refreshToken) return null;
-    const response = await fetch(AUTH_REFRESH_URL, {
+    const response = await timedFetch(AUTH_REFRESH_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken: tokens.refreshToken }),
@@ -1034,7 +1084,7 @@
   }
 
   async function gameApiRequest(url, options = {}) {
-    const send = (accessToken) => fetch(url, {
+    const send = (accessToken) => timedFetch(url, {
       ...options,
       headers: {
         ...(options.body ? { 'Content-Type': 'application/json' } : {}),
@@ -1071,12 +1121,13 @@
 
   function isTrashLootItem(item) {
     const npcPrice = Number(item?.npcPrice || 0);
-    return item?.category === 'loot' && npcPrice > 0 && npcPrice <= 4_000;
+    return item?.category === 'loot' && !PROTECTED_LOOT_IDS.has(Number(item?.id)) &&
+      npcPrice > 0 && npcPrice <= 4_000;
   }
 
   async function loadItemsCatalog() {
     if (!state.itemsCatalogPromise) {
-      state.itemsCatalogPromise = fetch(ITEMS_CATALOG_URL)
+      state.itemsCatalogPromise = timedFetch(ITEMS_CATALOG_URL)
         .then(async (response) => {
           if (!response.ok) throw new Error(`Catálogo de itens indisponível: HTTP ${response.status}`);
           const payload = await response.json();
@@ -1105,16 +1156,23 @@
 
   async function sellTrashIfEnabled() {
     if (!settings.sellTrash) return { attempted: false, ok: true, soldCount: 0 };
+    let submitted = false;
     try {
       const catalog = await loadItemsCatalog();
+      if (!canContinueCycle()) return { attempted: false, ok: false, soldCount: 0, reason: 'paused' };
       const items = buildTrashSale(state.inventoryItems, catalog);
       if (items.length === 0) return { attempted: false, ok: true, soldCount: 0 };
+      submitted = true;
       const result = await gameApiRequest(SHOP_SELL_URL, {
         method: 'POST',
         body: JSON.stringify({ items }),
       });
-      const ok = result?.ok === true;
-      if (Number.isFinite(Number(result?.gold))) state.currentGold = Number(result.gold);
+      const expectedCount = items.reduce((total, item) => total + item.qty, 0);
+      const ok = result?.ok === true && result?.soldKinds === items.length &&
+        result?.soldCount === expectedCount;
+      if (result?.gold != null && Number.isFinite(Number(result.gold))) state.currentGold = Number(result.gold);
+      state.inventoryItems = null;
+      state.inventoryUpdatedAt = 0;
       return {
         attempted: true,
         ok,
@@ -1122,10 +1180,89 @@
         goldGained: normalizeNonNegativeInteger(result?.goldGained, 0),
       };
     } catch (error) {
-      console.warn('[PIW Auto Refill] Venda de lixo falhou; compra continuará com o saldo atual.', {
+      console.warn('[PIW Auto Refill] Venda de lixo falhou; ciclo interrompido.', {
         message: error?.message || String(error),
       });
-      return { attempted: true, ok: false, soldCount: 0, error: error?.message || String(error) };
+      return { attempted: submitted, ok: false, soldCount: 0, error: error?.message || String(error) };
+    }
+  }
+
+  function buildPokemonSale(list) {
+    if (!Array.isArray(list)) return [];
+    return list.filter((pokemon) => {
+      const id = pokemon?.id;
+      const iv = pokemon?.ivTotal == null ? NaN : Number(pokemon.ivTotal);
+      const quality = pokemon?.quality == null ? NaN : Number(pokemon.quality);
+      const level = pokemon?.level == null ? NaN : Number(pokemon.level);
+      const locked = pokemon?.locked || pokemon?.isLocked || pokemon?.protected || pokemon?.sellLocked;
+      if (typeof id !== 'string' || !id || !Number.isFinite(iv) || iv < 0 || iv > 192 ||
+        !Number.isFinite(quality) || !Number.isInteger(level) || level < 1 || level > 100) return false;
+      if (pokemon.team || pokemon.starter || pokemon.shiny || pokemon.market || pokemon.listed || locked) return false;
+      if (!(Number(pokemon.sellValue) > 0)) return false;
+      return iv <= settings.pokemonMaxIv && quality <= 1.7;
+    }).map((pokemon) => pokemon.id);
+  }
+
+  function requestSnapshot(type, requestType) {
+    return new Promise((resolve, reject) => {
+      const socket = bridge.getSocket();
+      if (!bridge.isOpen() || !socket) {
+        reject(new Error('WebSocket indisponível para atualizar o estoque.'));
+        return;
+      }
+      let settled = false;
+      const finish = (value, error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        unsubscribe();
+        state.pendingSnapshots.delete(cancel);
+        if (error) reject(error);
+        else resolve(value);
+      };
+      const cancel = () => finish(null, new Error('Atualização de estoque cancelada.'));
+      const unsubscribe = bridge.subscribe({
+        incoming(event) {
+          if (event.socket !== socket || event.message?.type !== type) return;
+          const value = type === 'inventory' ? event.message.items
+            : type === 'pokes' ? event.message.list : event.message.counts;
+          if (type === 'balls' ? value && typeof value === 'object' : Array.isArray(value)) finish(value);
+        },
+        close(event) { if (event.socket === socket) cancel(); },
+        replaced(event) { if (event.previousSocket === socket) cancel(); },
+      });
+      const timeout = setTimeout(() => finish(null, new Error(`Tempo esgotado ao solicitar ${type}.`)), SNAPSHOT_TIMEOUT_MS);
+      state.pendingSnapshots.add(cancel);
+      if (!bridge.sendJson({ type: requestType })) cancel();
+    });
+  }
+
+  async function sellPokemonIfEnabled() {
+    if (!settings.sellPokemon) return { attempted: false, ok: true, soldCount: 0 };
+    let submitted = false;
+    try {
+      const list = await requestSnapshot('pokes', 'pokes-get');
+      if (!canContinueCycle()) return { attempted: false, ok: false, reason: 'paused' };
+      const pokeIds = buildPokemonSale(list);
+      if (!pokeIds.length) return { attempted: false, ok: true, soldCount: 0 };
+      submitted = true;
+      const result = await gameApiRequest(POKEMON_SELL_URL, {
+        method: 'POST',
+        body: JSON.stringify({ pokeIds }),
+      });
+      const sold = Number(result?.sold);
+      const ok = Number.isInteger(sold) && sold === pokeIds.length;
+      if (result?.gold != null && Number.isFinite(Number(result.gold))) state.currentGold = Number(result.gold);
+      return {
+        attempted: true,
+        ok,
+        soldCount: Number.isInteger(sold) && sold >= 0 ? sold : 0,
+        requested: pokeIds.length,
+        goldGained: normalizeNonNegativeInteger(result?.goldGained, 0),
+        reason: ok ? null : 'partial_sale',
+      };
+    } catch (error) {
+      return { attempted: submitted, ok: false, soldCount: 0, reason: error?.message || String(error) };
     }
   }
 
@@ -1179,7 +1316,7 @@
     let reason = null;
 
     for (const batch of batches) {
-      if (!state.installed || !settings.enabled) {
+      if (!canContinueCycle()) {
         reason = 'automation_paused';
         break;
       }
@@ -1205,7 +1342,7 @@
 
       const batchBought = normalizeNonNegativeInteger(result?.bought, 0);
       bought += Math.min(batch, batchBought);
-      if (Number.isFinite(Number(result?.gold))) {
+      if (result?.gold != null && Number.isFinite(Number(result.gold)) && Number(result.gold) >= 0) {
         state.currentGold = Math.max(0, Number(result.gold));
       } else {
         reason = 'missing_gold_confirmation';
@@ -1218,7 +1355,7 @@
     }
 
     return {
-      ok: bought === quantity,
+      ok: bought === quantity && !reason,
       requested: quantity,
       bought,
       reason,
@@ -1258,32 +1395,68 @@
     const needsPotion = categoryNeedsRefill('potion');
     const needsBall = categoryNeedsRefill('ball');
     if (!needsPotion && !needsBall) return false;
-    if (settings.sellTrash && !state.inventoryItems) {
-      setMessage('Aguardando um inventory do jogo antes de vender lixo.');
-      return false;
-    }
-
     if (needsPotion) state.potionArmed = false;
     if (needsBall) state.ballArmed = false;
     state.cycleRunning = true;
+    state.cycleSocket = bridge.getSocket();
     state.lastResult = null;
     setMessage('Preparando reabastecimento...');
     renderPanel();
 
-    const cycleResult = { trash: null, potion: null, ball: null };
+    const cycleResult = { trash: null, pokemon: null, potion: null, ball: null };
+    let mutationStarted = false;
     try {
+      if (needsBall && (!state.ballsUpdatedAt || Date.now() - state.ballsUpdatedAt > RECENT_INVENTORY_MS)) {
+        const counts = await requestSnapshot('balls', 'balls-get');
+        if (!canContinueCycle()) return false;
+        updateBallStock(counts);
+      }
+      if (settings.sellTrash) {
+        setMessage('Atualizando inventário antes da venda...');
+        const items = await requestSnapshot('inventory', 'inv-get');
+        if (!canContinueCycle()) return false;
+        updatePotionStock(items);
+      } else if ((needsPotion || needsBall) && settings.potionEnabled &&
+        (!state.inventoryUpdatedAt || Date.now() - state.inventoryUpdatedAt > RECENT_INVENTORY_MS)) {
+        setMessage('Atualizando estoque de potions...');
+        const items = await requestSnapshot('inventory', 'inv-get');
+        if (!canContinueCycle()) return false;
+        updatePotionStock(items);
+      }
+      const potionFirst = categoryNeedsRefill('potion');
+      if (potionFirst) state.potionArmed = false;
+      if (!canContinueCycle()) return false;
       cycleResult.trash = await sellTrashIfEnabled();
+      mutationStarted ||= cycleResult.trash.attempted;
+      if (!canContinueCycle()) throw new Error('Automação pausada durante a venda de loot.');
+      if (cycleResult.trash.ok) {
+        cycleResult.pokemon = await sellPokemonIfEnabled();
+        mutationStarted ||= cycleResult.pokemon.attempted;
+        if (!canContinueCycle()) throw new Error('Automação pausada durante a venda de Pokémon.');
+      }
+      // Falhas de venda ficam registradas no resultado, mas não impedem o refill.
+      // A loja fornece o gold atualizado antes de qualquer compra.
       const shop = await loadShop({ render: false });
+      if (!canContinueCycle()) return false;
 
-      if (needsPotion && settings.enabled && settings.potionEnabled) {
+      if ((needsPotion || potionFirst) && settings.enabled && settings.potionEnabled &&
+        state.potionStock != null && state.potionStock <= settings.potionThreshold) {
+        mutationStarted = true;
         cycleResult.potion = await purchaseProduct({
           kind: 'item',
           id: settings.potionItemId,
           quantity: settings.potionQuantity,
           shop,
         });
+        if (!cycleResult.potion.ok) {
+          state.lastResult = cycleResult;
+          state.needsAttention = true;
+          setMessage(`Potion incompleta: ${cycleResult.potion.reason || 'resposta parcial'}`, true);
+          return false;
+        }
       }
-      if (needsBall && settings.enabled && settings.ballEnabled) {
+      if (needsBall && state.ballStock <= settings.ballThreshold && settings.enabled && settings.ballEnabled) {
+        mutationStarted = true;
         cycleResult.ball = await purchaseProduct({
           kind: 'ball',
           id: settings.ballId,
@@ -1300,13 +1473,17 @@
       const incomplete = [cycleResult.potion, cycleResult.ball]
         .filter(Boolean)
         .some((result) => !result.ok);
-      const trashWarning = cycleResult.trash?.attempted && !cycleResult.trash.ok;
+      const trashWarning = cycleResult.trash?.ok === false;
+      const pokemonWarning = cycleResult.pokemon?.ok === false;
       setMessage(
         `${summaries.join(' · ') || 'Nenhuma compra realizada.'}` +
           ` · Gold: ${formatNumber(state.currentGold)}` +
-          (trashWarning ? ' · Venda de lixo falhou.' : ''),
-        incomplete || trashWarning,
+          (trashWarning ? ' · Venda de lixo falhou.' : '') +
+          (pokemonWarning ? ' · Venda de Pokémon falhou.' : '') +
+          (cycleResult.pokemon?.soldCount ? ` · Pokémon vendidos: ${formatNumber(cycleResult.pokemon.soldCount)}` : ''),
+        incomplete || trashWarning || pokemonWarning,
       );
+      state.needsAttention = incomplete || trashWarning || pokemonWarning;
       log('Ciclo concluído.', {
         potion: cycleResult.potion && {
           requested: cycleResult.potion.requested,
@@ -1319,32 +1496,49 @@
           reason: cycleResult.ball.reason,
         },
         trashSold: cycleResult.trash?.soldCount || 0,
+        pokemonSold: cycleResult.pokemon?.soldCount || 0,
       });
       return true;
     } catch (error) {
       state.lastResult = { error: error?.message || String(error), ...cycleResult };
-      setMessage(`Falha no reabastecimento: ${error?.message || String(error)}. Rearme manualmente.`, true);
+      setMessage(`Falha no reabastecimento: ${error?.message || String(error)}. Tente novamente pelo painel.`, true);
+      state.needsAttention = true;
+      if (!mutationStarted && state.installed && settings.enabled) {
+        state.retryNotBefore = Date.now() + RETRY_DELAY_MS;
+        state.retryTimer = setTimeout(() => {
+          state.retryTimer = null;
+          if (!state.installed || !settings.enabled) return;
+          state.retryNotBefore = 0;
+          if (needsPotion) state.potionArmed = true;
+          if (needsBall) state.ballArmed = true;
+          scheduleRefillCheck();
+        }, RETRY_DELAY_MS);
+        setMessage('Falha antes de qualquer operação. Nova tentativa em 1 minuto.', true);
+      }
       console.warn('[PIW Auto Refill] Ciclo interrompido.', {
         message: error?.message || String(error),
       });
       return false;
     } finally {
       state.cycleRunning = false;
+      state.cycleSocket = null;
       renderPanel();
       scheduleRefillCheck();
     }
   }
 
   function scheduleRefillCheck() {
-    if (!state.installed || !settings.enabled || state.cycleRunning || state.cycleTimer) return;
+    if (!state.installed || !settings.enabled || state.cycleRunning || state.cycleTimer ||
+      Date.now() < state.retryNotBefore) return;
     if (!categoryNeedsRefill('potion') && !categoryNeedsRefill('ball')) return;
     state.cycleTimer = setTimeout(runRefillCycle, REFILL_DEBOUNCE_MS);
   }
 
   function updatePotionStock(items) {
     state.inventoryItems = items;
+    state.inventoryUpdatedAt = Date.now();
     state.potionStock = items.reduce((total, entry) => (
-      Number(entry?.itemId) === settings.potionItemId
+      POTION_IDS.has(Number(entry?.itemId))
         ? total + normalizeNonNegativeInteger(entry?.quantity, 0)
         : total
     ), 0);
@@ -1355,6 +1549,7 @@
 
   function updateBallStock(counts) {
     state.ballCounts = { ...counts };
+    state.ballsUpdatedAt = Date.now();
     state.ballStock = normalizeNonNegativeInteger(counts?.[settings.ballId], 0);
     updateCategoryArming('ball');
     scheduleRefillCheck();
@@ -1389,6 +1584,12 @@
     }
     if ([...select.options].some((option) => option.value === existingValue)) {
       select.value = existingValue;
+    } else if (existingValue) {
+      const option = document.createElement('option');
+      option.value = existingValue;
+      option.textContent = `Produto #${existingValue} · aguardando loja`;
+      select.appendChild(option);
+      select.value = existingValue;
     }
   }
 
@@ -1410,20 +1611,44 @@
     }
     if (!panel) return;
 
-    panel.querySelector('[data-par="status"]').textContent = state.lastMessage;
-    panel.querySelector('[data-par="socket"]').textContent = bridge.isOpen() ? 'Conectado' : 'Aguardando';
+    panel.querySelectorAll('.par-status').forEach((element) => {
+      element.textContent = state.lastMessage;
+      element.classList.toggle('par-error', state.lastMessageIsError);
+    });
+    const potionName = state.shopCatalog?.items.find((item) => Number(item.id) === settings.potionItemId)?.name ||
+      `Potion #${settings.potionItemId}`;
+    const ballName = state.shopCatalog?.balls.find((item) => Number(item.id) === settings.ballId)?.name ||
+      `Ball #${settings.ballId}`;
+    panel.querySelector('[data-par="potion-plan"]').textContent = settings.potionEnabled
+      ? `${potionName} · ${formatNumber(settings.potionQuantity)} ao chegar a ${formatNumber(settings.potionThreshold)}`
+      : 'Desligadas';
+    panel.querySelector('[data-par="ball-plan"]').textContent = settings.ballEnabled
+      ? `${ballName} · ${formatNumber(settings.ballQuantity)} ao chegar a ${formatNumber(settings.ballThreshold)}`
+      : 'Desligadas';
+    panel.querySelector('[data-par="sales"]').textContent =
+      `Vendas: ${[settings.sellTrash && 'loot', settings.sellPokemon && 'Pokémon'].filter(Boolean).join(' + ') || 'desligadas'}`;
+    panel.querySelector('[data-par="reserve"]').textContent = `Reserva: ${formatNumber(settings.goldReserve)} gold`;
     panel.querySelector('[data-par="potion-stock"]').textContent = formatNumber(state.potionStock);
     panel.querySelector('[data-par="ball-stock"]').textContent = formatNumber(state.ballStock);
     panel.querySelector('[data-par="gold"]').textContent = formatNumber(state.currentGold);
-    panel.querySelector('[data-par="potion-arm"]').textContent = state.potionArmed ? 'Armado' : 'Aguardando rearme';
-    panel.querySelector('[data-par="ball-arm"]').textContent = state.ballArmed ? 'Armado' : 'Aguardando rearme';
+    const latestStock = Math.max(state.inventoryUpdatedAt, state.ballsUpdatedAt);
+    panel.querySelector('[data-par="connection"]').textContent = bridge.isOpen() ? 'Conectado' : 'Desconectado';
+    panel.querySelector('[data-par="connection"]').classList.toggle('par-offline', !bridge.isOpen());
+    panel.querySelector('[data-par="updated"]').textContent = latestStock
+      ? `Estoque atualizado às ${new Date(latestStock).toLocaleTimeString('pt-BR')}`
+      : 'Aguardando estoque';
     panel.querySelector('.par-toggle').textContent = settings.enabled ? 'Pausar' : 'Ativar';
-    panel.querySelector('.par-toggle').disabled = state.cycleRunning;
-    panel.querySelector('.par-load-shop').disabled = state.catalogLoading || state.cycleRunning;
-    panel.querySelector('.par-load-shop').textContent = state.catalogLoading ? 'Carregando...' : 'Carregar loja';
+    panel.querySelector('.par-toggle').disabled = false;
+    panel.querySelector('.par-retry').hidden = !state.needsAttention || !settings.enabled;
+    panel.querySelector('.par-retry').disabled = state.cycleRunning;
+    panel.querySelectorAll('.par-settings input, .par-settings select').forEach((control) => {
+      control.disabled = settings.enabled || state.cycleRunning;
+    });
   }
 
   function syncFormFromSettings(panel) {
+    populateSelect(panel.querySelector('#par-potion-id'), [], settings.potionItemId);
+    populateSelect(panel.querySelector('#par-ball-id'), [], settings.ballId);
     panel.querySelector('#par-potion-enabled').checked = settings.potionEnabled;
     panel.querySelector('#par-potion-threshold').value = String(settings.potionThreshold);
     panel.querySelector('#par-potion-quantity').value = String(settings.potionQuantity);
@@ -1431,6 +1656,8 @@
     panel.querySelector('#par-ball-threshold').value = String(settings.ballThreshold);
     panel.querySelector('#par-ball-quantity').value = String(settings.ballQuantity);
     panel.querySelector('#par-sell-trash').checked = settings.sellTrash;
+    panel.querySelector('#par-sell-pokemon').checked = settings.sellPokemon;
+    panel.querySelector('#par-pokemon-max-iv').value = String(settings.pokemonMaxIv);
     panel.querySelector('#par-gold-reserve').value = String(settings.goldReserve);
   }
 
@@ -1446,6 +1673,8 @@
       ballThreshold: panel.querySelector('#par-ball-threshold').value,
       ballQuantity: panel.querySelector('#par-ball-quantity').value,
       sellTrash: panel.querySelector('#par-sell-trash').checked,
+      sellPokemon: panel.querySelector('#par-sell-pokemon').checked,
+      pokemonMaxIv: panel.querySelector('#par-pokemon-max-iv').value,
       goldReserve: panel.querySelector('#par-gold-reserve').value,
     });
   }
@@ -1471,19 +1700,38 @@
       #piw-auto-refill-button.par-running::after { background:#48bb78;box-shadow:0 0 6px #48bb78; }
       #piw-auto-refill-button.par-busy::after { background:#f6ad55;box-shadow:0 0 7px #f6ad55; }
       #piw-auto-refill-panel[hidden] { display:none!important; }
-      #piw-auto-refill-panel { position:fixed;right:18px;top:120px;z-index:10022;width:340px;max-height:78vh;overflow:auto;background:#0c161f;color:#e2e8f0;border:1px solid #315269;border-radius:12px;box-shadow:0 18px 48px rgba(0,0,0,.75);font:13px/1.35 system-ui,sans-serif; }
+      #piw-auto-refill-panel { position:fixed;right:18px;top:clamp(12px,12vh,120px);z-index:10022;width:360px;height:370px;min-height:min(370px,82vh);max-width:calc(100vw - 20px);max-height:82vh;overflow:hidden;background:#0c161f;color:#e2e8f0;border:1px solid #315269;border-radius:12px;box-shadow:0 18px 48px rgba(0,0,0,.75);font:13px/1.45 system-ui,sans-serif; }
+      #piw-auto-refill-panel.par-expanded { box-sizing:border-box;right:12px;top:clamp(12px,5vh,48px);width:min(560px,calc(100vw - 24px));height:min(90vh,720px);min-height:min(370px,calc(100vh - 24px));max-width:calc(100vw - 24px);max-height:calc(100vh - 24px); }
       #piw-auto-refill-panel header { display:flex;align-items:center;gap:8px;padding:10px 12px;background:#14222d;border-bottom:1px solid #273f52;font-weight:800;color:#90cdf4; }
       #piw-auto-refill-panel header span { flex:1; }
+      #piw-auto-refill-panel header .par-back { padding:3px 7px;font-size:12px; }
       #piw-auto-refill-panel button { border:1px solid #315269;border-radius:6px;background:#172a38;color:#d9e7f2;padding:7px 9px;font-weight:700;cursor:pointer; }
       #piw-auto-refill-panel button:disabled { cursor:not-allowed;opacity:.45; }
       #piw-auto-refill-panel .par-close { width:28px;height:28px;padding:0;background:#44212a;border-color:#74313d;color:#feb2b2;font-size:18px; }
-      #piw-auto-refill-panel .par-body { padding:11px; }
-      #piw-auto-refill-panel .par-status { padding:7px 9px;margin-bottom:8px;border-radius:6px;background:#0a1219;color:#90cdf4;text-align:center;font-weight:700; }
+      #piw-auto-refill-panel .par-body { display:flex;flex-direction:column;min-height:0;padding:12px;overflow:hidden!important; }
+      #piw-auto-refill-panel .par-view { flex:1 1 auto;min-height:0;overflow-y:auto;scrollbar-width:thin; }
+      #piw-auto-refill-panel .par-view[hidden],#piw-auto-refill-panel .par-back[hidden] { display:none!important; }
+      #piw-auto-refill-panel .par-open-settings { display:block;width:100%;margin-top:12px;text-align:left;background:transparent;border:0;border-top:1px solid #273f52;border-radius:0;padding:10px 0 2px;color:#90cdf4; }
+      #piw-auto-refill-panel .par-status { padding:9px 10px;margin-bottom:12px;border-radius:6px;background:#0a1219;color:#90cdf4;text-align:center;font-weight:700; }
       #piw-auto-refill-panel .par-status.par-error { color:#feb2b2; }
-      #piw-auto-refill-panel .par-summary { display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:8px; }
-      #piw-auto-refill-panel .par-card { min-width:0;padding:6px;border:1px solid #20394b;border-radius:6px;background:#101f2a;text-align:center; }
-      #piw-auto-refill-panel .par-card small { display:block;color:#718096;font-size:9px;text-transform:uppercase; }
-      #piw-auto-refill-panel .par-card b { display:block;overflow:hidden;text-overflow:ellipsis; }
+      #piw-auto-refill-panel .par-plan { display:grid;gap:8px;margin-bottom:11px; }
+      #piw-auto-refill-panel .par-plan-row { display:grid;grid-template-columns:62px minmax(0,1fr);gap:8px;align-items:start; }
+      #piw-auto-refill-panel .par-plan-row b { color:#90cdf4; }
+      #piw-auto-refill-panel .par-plan-row span { min-width:0;overflow-wrap:anywhere; }
+      #piw-auto-refill-panel .par-meta { display:flex;flex-wrap:wrap;gap:4px 12px;margin-bottom:11px; }
+      #piw-auto-refill-panel .par-stocks { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:8px; }
+      #piw-auto-refill-panel .par-stock { min-width:0;padding:7px 8px;border:1px solid #20394b;border-radius:7px;background:#101f2a; }
+      #piw-auto-refill-panel .par-stock small { display:block;color:#94a3b8;font-size:10px; }
+      #piw-auto-refill-panel .par-stock strong { display:block;overflow-wrap:anywhere;font-size:14px; }
+      #piw-auto-refill-panel .par-footnote { display:flex;flex-wrap:wrap;gap:4px 10px;justify-content:space-between; }
+      #piw-auto-refill-panel .par-offline { color:#feb2b2; }
+      #piw-auto-refill-panel .par-muted { color:#94a3b8;font-size:11px; }
+      #piw-auto-refill-panel .par-settings { padding-right:3px; }
+      #piw-auto-refill-panel .par-settings-inner { max-width:980px;margin:0 auto; }
+      #piw-auto-refill-panel .par-settings-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start; }
+      #piw-auto-refill-panel .par-economy { grid-column:1 / -1; }
+      @media (max-width:600px) { #piw-auto-refill-panel .par-settings-grid { grid-template-columns:1fr; } #piw-auto-refill-panel .par-economy { grid-column:auto; } }
+      #piw-auto-refill-panel .par-retry[hidden] { display:none; }
       #piw-auto-refill-panel fieldset { margin:7px 0;padding:8px;border:1px solid #273f52;border-radius:7px; }
       #piw-auto-refill-panel legend { padding:0 5px;color:#90cdf4;font-weight:800; }
       #piw-auto-refill-panel label { display:grid;grid-template-columns:110px 1fr;align-items:center;gap:6px;margin:5px 0; }
@@ -1491,7 +1739,8 @@
       #piw-auto-refill-panel .par-check { display:flex;gap:6px;grid-template-columns:none; }
       #piw-auto-refill-panel .par-check input { min-width:auto; }
       #piw-auto-refill-panel .par-arm { color:#a0aec0;font-size:11px; }
-      #piw-auto-refill-panel .par-actions { display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px; }
+      #piw-auto-refill-panel .par-actions { display:flex;flex:0 0 auto;gap:6px;margin-top:10px; }
+      #piw-auto-refill-panel .par-actions button { flex:1; }
       #piw-auto-refill-panel .par-toggle { background:#176342;border-color:#299263; }
       #piw-auto-refill-panel .par-danger { color:#feb2b2; }
     `;
@@ -1504,45 +1753,63 @@
     panel.id = 'piw-auto-refill-panel';
     panel.hidden = true;
     panel.innerHTML = `
-      <header><span>🧰 Auto Refill</span><button class="par-close" type="button">×</button></header>
+      <header><button class="par-back" type="button" hidden aria-label="Voltar ao resumo">← Voltar</button><span data-par="title">🧰 Auto Refill</span><button class="par-close" type="button">×</button></header>
       <div class="par-body">
+        <div class="par-view" data-par-view="summary">
         <div class="par-status" data-par="status">Auto Refill pausado.</div>
-        <div class="par-summary">
-          <div class="par-card"><small>Socket</small><b data-par="socket">Aguardando</b></div>
-          <div class="par-card"><small>Potion</small><b data-par="potion-stock">—</b></div>
-          <div class="par-card"><small>Ball</small><b data-par="ball-stock">—</b></div>
-          <div class="par-card"><small>Gold</small><b data-par="gold">—</b></div>
-          <div class="par-card"><small>Potion</small><b class="par-arm" data-par="potion-arm">Armado</b></div>
-          <div class="par-card"><small>Ball</small><b class="par-arm" data-par="ball-arm">Armado</b></div>
+        <div class="par-plan">
+          <div class="par-plan-row"><b>Potions</b><span data-par="potion-plan"></span></div>
+          <div class="par-plan-row"><b>Balls</b><span data-par="ball-plan"></span></div>
         </div>
+        <div class="par-meta par-muted"><span data-par="sales"></span><span data-par="reserve"></span></div>
+        <div class="par-stocks">
+          <div class="par-stock"><small>Potions</small><strong data-par="potion-stock"></strong></div>
+          <div class="par-stock"><small>Balls</small><strong data-par="ball-stock"></strong></div>
+          <div class="par-stock"><small>Gold</small><strong data-par="gold"></strong></div>
+        </div>
+        <div class="par-footnote par-muted"><span data-par="connection"></span><span data-par="updated"></span></div>
+        <button class="par-open-settings" type="button">▸ Configurar</button>
+        </div>
+        <div class="par-view par-settings" data-par-view="settings" hidden>
+        <div class="par-settings-inner">
+        <div class="par-status" data-par="settings-status">Auto Refill pausado.</div>
+        <p class="par-muted">As escolhas são salvas ao alterar. Pause para editar. A automação ativa volta após recarregar esta aba.</p>
+        <div class="par-settings-grid">
         <fieldset>
           <legend>Potions</legend>
           <label class="par-check"><input id="par-potion-enabled" type="checkbox"> Comprar potions</label>
-          <label>Produto <select id="par-potion-id"><option value="203">Hyper Potion</option></select></label>
-          <label>Threshold <input id="par-potion-threshold" type="number" min="0" step="1"></label>
-          <label>Quantidade <input id="par-potion-quantity" type="number" min="1" max="10000" step="1"></label>
+          <label>Produto <select id="par-potion-id"></select></label>
+          <label>Comprar em <input id="par-potion-threshold" type="number" min="0" step="1"></label>
+          <label>Comprar unidades <input id="par-potion-quantity" type="number" min="1" max="10000" step="1"></label>
         </fieldset>
         <fieldset>
           <legend>Pokébolas</legend>
           <label class="par-check"><input id="par-ball-enabled" type="checkbox"> Comprar balls</label>
-          <label>Produto <select id="par-ball-id"><option value="4">Ultra Ball</option></select></label>
-          <label>Threshold <input id="par-ball-threshold" type="number" min="0" step="1"></label>
-          <label>Quantidade <input id="par-ball-quantity" type="number" min="1" max="10000" step="1"></label>
+          <label>Produto <select id="par-ball-id"></select></label>
+          <label>Comprar em <input id="par-ball-threshold" type="number" min="0" step="1"></label>
+          <label>Comprar unidades <input id="par-ball-quantity" type="number" min="1" max="10000" step="1"></label>
         </fieldset>
-        <fieldset>
+        <fieldset class="par-economy">
           <legend>Economia</legend>
-          <label class="par-check par-danger"><input id="par-sell-trash" type="checkbox"> Vender loot NPC de 1 a 4.000 gold</label>
+          <label class="par-check par-danger"><input id="par-sell-trash" type="checkbox"> Vender loot NPC de 1 a 4.000 gold (exceto Fresh Herbs)</label>
+          <label class="par-check par-danger"><input id="par-sell-pokemon" type="checkbox"> Vender Pokémon automaticamente</label>
+          <label>Vender até IV <input id="par-pokemon-max-iv" type="number" min="0" max="192" step="1"></label>
+          <p class="par-muted">Nunca vende level acima de 100 ou desconhecido, quality acima de 1,7, shiny, starter, Pokémon no time, protegido ou listado.</p>
           <label>Reserva de gold <input id="par-gold-reserve" type="number" min="0" step="1"></label>
+          <p class="par-muted">Potions são compradas antes de balls. A reserva configurada vale para ambas.</p>
         </fieldset>
+        </div>
+        </div>
+        </div>
         <div class="par-actions">
-          <button class="par-load-shop" type="button">Carregar loja</button>
-          <button class="par-rearm" type="button">Rearmar</button>
-          <button class="par-save" type="button">Salvar</button>
+          <button class="par-retry" type="button" hidden>Tentar novamente</button>
           <button class="par-toggle" type="button">Ativar</button>
         </div>
       </div>`;
     document.body.appendChild(panel);
     disposePanelDrag?.();
+    compactPanelStyle = null;
+    panel.dataset.parView = 'summary';
     disposePanelDrag = uiMenu.makePanelDraggable(panel, {
       storageKey: 'piw-auto-refill-panel-position-v1',
       sizeStorageKey: 'piw-auto-refill-panel-size-v1',
@@ -1550,37 +1817,74 @@
     syncFormFromSettings(panel);
     populateProductSelectors();
 
-    panel.querySelector('.par-close').addEventListener('click', () => { panel.hidden = true; });
-    panel.querySelector('.par-load-shop').addEventListener('click', async () => {
-      try {
-        await loadShop();
-        setMessage('Catálogo e gold atualizados.');
-      } catch (error) {
-        setMessage(`Não foi possível carregar a loja: ${error?.message || String(error)}`, true);
-      }
-      renderPanel();
+    panel.querySelector('.par-close').addEventListener('click', () => {
+      panel.hidden = true;
+      setPanelView(panel, 'summary');
     });
-    panel.querySelector('.par-save').addEventListener('click', () => {
+    panel.querySelector('.par-open-settings').addEventListener('click', () => {
+      syncFormFromSettings(panel);
+      populateProductSelectors();
+      setPanelView(panel, 'settings');
+    });
+    panel.querySelector('.par-back').addEventListener('click', () => setPanelView(panel, 'summary'));
+    panel.querySelector('.par-settings').addEventListener('change', () => {
+      if (settings.enabled || state.cycleRunning) return;
       applySettings(readFormSettings(panel));
-      setMessage('Configurações salvas e categorias rearmadas.');
-      renderPanel();
+      setMessage('Configurações salvas nesta aba.');
     });
-    panel.querySelector('.par-rearm').addEventListener('click', () => {
+    panel.querySelectorAll('.par-settings input[type="number"]').forEach((input) => {
+      for (const type of ['keydown', 'keypress', 'keyup']) {
+        input.addEventListener(type, (event) => event.stopPropagation());
+      }
+    });
+    panel.querySelector('.par-retry').addEventListener('click', () => {
+      if (state.cycleRunning) return;
+      if (state.retryTimer) clearTimeout(state.retryTimer);
+      state.retryTimer = null;
+      state.retryNotBefore = 0;
+      state.needsAttention = false;
       state.potionArmed = true;
       state.ballArmed = true;
-      setMessage('Categorias rearmadas manualmente.');
+      setMessage('Tentando novamente com estoque atualizado...');
       scheduleRefillCheck();
       renderPanel();
     });
     panel.querySelector('.par-toggle').addEventListener('click', () => {
       if (settings.enabled) window.piwAutoRefill.stop();
       else {
-        applySettings(readFormSettings(panel));
         window.piwAutoRefill.start();
       }
       renderPanel();
     });
     renderPanel();
+  }
+
+  function setPanelView(panel, view) {
+    const showingSettings = view === 'settings';
+    if (panel.dataset.parView !== view) {
+      if (showingSettings) {
+        compactPanelStyle = panel.getAttribute('style');
+        disposePanelDrag?.();
+        panel.removeAttribute('style');
+        panel.classList.add('par-expanded');
+      } else {
+        disposePanelDrag?.();
+        panel.classList.remove('par-expanded');
+        if (compactPanelStyle == null) panel.removeAttribute('style');
+        else panel.setAttribute('style', compactPanelStyle);
+        compactPanelStyle = null;
+      }
+      disposePanelDrag = uiMenu.makePanelDraggable(panel, {
+        storageKey: showingSettings ? 'piw-auto-refill-settings-position-v1' : 'piw-auto-refill-panel-position-v1',
+        sizeStorageKey: showingSettings ? 'piw-auto-refill-settings-size-v1' : 'piw-auto-refill-panel-size-v1',
+      });
+      panel.dataset.parView = view;
+    }
+    panel.querySelector('[data-par-view="summary"]').hidden = showingSettings;
+    panel.querySelector('[data-par-view="settings"]').hidden = !showingSettings;
+    panel.querySelector('.par-back').hidden = !showingSettings;
+    panel.querySelector('[data-par="title"]').textContent = showingSettings ? 'Configurações' : '🧰 Auto Refill';
+    if (showingSettings) panel.querySelector('[data-par-view="settings"]').scrollTop = 0;
   }
 
   function registerSidebarButton() {
@@ -1595,6 +1899,10 @@
         const panel = document.querySelector('#piw-auto-refill-panel');
         if (!panel) return;
         panel.hidden = !panel.hidden;
+        if (panel.hidden) setPanelView(panel, 'summary');
+        if (!panel.hidden && !state.shopCatalog && !state.catalogLoading) {
+          loadShop().catch((error) => setMessage(`Loja indisponível: ${error?.message || String(error)}`, true));
+        }
         renderPanel();
       },
     });
@@ -1620,6 +1928,7 @@
 
   unsubscribeBridge = bridge.subscribe({
     socket(event) {
+      if (state.socket && state.socket !== event.socket) invalidateSocketSnapshots();
       state.socket = event.socket;
       renderPanel();
     },
@@ -1628,7 +1937,10 @@
       renderPanel();
     },
     close(event) {
-      if (state.socket === event.socket) state.socket = null;
+      if (state.socket === event.socket) {
+        state.socket = null;
+        invalidateSocketSnapshots();
+      }
       renderPanel();
     },
     incoming(event) {
@@ -1654,15 +1966,21 @@
       };
     },
     configure(patch) {
+      if (settings.enabled || state.cycleRunning) return this.status();
       applySettings({ ...settings, ...patch });
       return this.status();
     },
     start() {
+      if (state.cycleRunning || !state.installed) return this.status();
       settings.enabled = true;
       state.potionArmed = true;
       state.ballArmed = true;
+      state.needsAttention = false;
+      state.retryNotBefore = 0;
+      if (state.retryTimer) clearTimeout(state.retryTimer);
+      state.retryTimer = null;
       saveSettings();
-      setMessage('Auto Refill ativo. Aguardando estoque do jogo.');
+      setMessage('Auto Refill ativo.');
       scheduleRefillCheck();
       renderPanel();
       return this.status();
@@ -1670,6 +1988,10 @@
     stop() {
       settings.enabled = false;
       saveSettings();
+      for (const cancel of [...state.pendingSnapshots]) cancel();
+      if (state.retryTimer) clearTimeout(state.retryTimer);
+      state.retryTimer = null;
+      state.retryNotBefore = 0;
       if (state.cycleTimer) clearTimeout(state.cycleTimer);
       state.cycleTimer = null;
       setMessage(state.cycleRunning
@@ -1679,6 +2001,7 @@
       return this.status();
     },
     rearm(category = 'all') {
+      if (state.cycleRunning) return this.status();
       if (category === 'all' || category === 'potion') state.potionArmed = true;
       if (category === 'all' || category === 'ball') state.ballArmed = true;
       scheduleRefillCheck();
@@ -1690,6 +2013,9 @@
     uninstall() {
       state.installed = false;
       settings.enabled = false;
+      for (const cancel of [...state.pendingSnapshots]) cancel();
+      if (state.retryTimer) clearTimeout(state.retryTimer);
+      state.retryTimer = null;
       if (state.cycleTimer) clearTimeout(state.cycleTimer);
       state.cycleTimer = null;
       unsubscribeBridge?.();

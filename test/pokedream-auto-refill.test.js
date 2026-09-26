@@ -20,6 +20,7 @@ function createFakeStore({
   queueBuy = true,
   applyPurchases = true,
   bag = {},
+  emptyBag = false,
   bagLocks = [],
   queueLock = true,
   applyLocks = true,
@@ -74,7 +75,7 @@ function createFakeStore({
   state = {
     hud: {
       money: gold,
-      bag: { small_potion: potion, poke_ball: ball, ...bag },
+      bag: emptyBag ? { ...bag } : { small_potion: potion, poke_ball: ball, ...bag },
       bagLocks: [...bagLocks],
     },
     actionLog: [],
@@ -102,13 +103,14 @@ function createFakeStore({
       },
     });
   };
+  store.setGold = (goldAmount) => replaceHud({ ...state.hud, money: goldAmount });
   store.listenerCount = () => listeners.size;
   return store;
 }
 
 function createHarness(options = {}) {
   const store = options.store || createFakeStore(options);
-  const storage = new Map();
+  const storage = options.storage || new Map();
   const timers = new Map();
   let nextTimerId = 1;
   let now = 0;
@@ -148,6 +150,12 @@ function createHarness(options = {}) {
     Number,
     Object,
     Promise,
+    Date: { now() { return (options.baseTime || 1_000_000) + now; } },
+    performance: {
+      getEntriesByType(type) {
+        return type === 'navigation' ? [{ type: options.navigationType || 'navigate' }] : [];
+      },
+    },
     Set,
     String,
     URL,
@@ -253,10 +261,150 @@ test('mantém os defaults seguros e exige confirmação explícita', async () =>
     ballThreshold: 20,
     ballQuantity: 1_000,
     sellAllLoot: true,
+    autoResume: false,
     protectedItemIds: [],
   });
   assert.equal(harness.api.start(), false);
   assert.deepEqual(harness.store.getState().actionLog, []);
+});
+
+test('retoma após recarga com estado pronto, mas não após navegação comum', async () => {
+  const first = createHarness({ potion: 10, ball: 20 });
+  await first.tick(0);
+  first.api.configure({ autoResume: true, sellAllLoot: false });
+  first.api.start({ confirmed: true });
+  const storage = first.storage;
+
+  const navigation = createHarness({ storage, potion: 10, ball: 20 });
+  await navigation.tick(10_000);
+  assert.equal(navigation.api.status().enabled, false);
+  assert.deepEqual(navigation.store.getState().actionLog, []);
+
+  const reload = createHarness({ storage, navigationType: 'reload', potion: 10, ball: 20 });
+  await reload.tick(4_999);
+  assert.equal(reload.api.status().enabled, false);
+  assert.deepEqual(reload.store.getState().actionLog, []);
+  await reload.tick(151);
+  assert.equal(reload.api.status().enabled, true);
+  assert.deepEqual(reload.store.getState().actionLog.map((action) => action.type), ['buy', 'buy']);
+});
+
+test('retoma com mochila vazia e gold válido', async () => {
+  const first = createHarness();
+  await first.tick(0);
+  first.api.configure({ autoResume: true, sellAllLoot: false });
+  first.api.start({ confirmed: true });
+
+  const reload = createHarness({
+    storage: first.storage,
+    navigationType: 'reload',
+    emptyBag: true,
+    gold: 50_000,
+  });
+  await reload.tick(5_150);
+  assert.equal(reload.api.status().enabled, true);
+  assert.deepEqual(reload.store.getState().actionLog.map((action) => action.type), ['buy', 'buy']);
+});
+
+test('pausar cancela a retomada automática e estado incompleto impede ativação', async () => {
+  const first = createHarness();
+  await first.tick(0);
+  first.api.configure({ autoResume: true });
+  first.api.start({ confirmed: true });
+  first.api.stop();
+
+  const stopped = createHarness({ storage: first.storage, navigationType: 'reload' });
+  await stopped.tick(10_000);
+  assert.equal(stopped.api.status().enabled, false);
+
+  first.api.start({ confirmed: true });
+  const incomplete = createHarness({
+    storage: first.storage,
+    navigationType: 'reload',
+    gold: NaN,
+  });
+  await incomplete.tick(15_000);
+  assert.equal(incomplete.api.status().enabled, false);
+  assert.deepEqual(incomplete.store.getState().actionLog, []);
+  incomplete.store.setGold(50_000);
+  await incomplete.tick(5_000);
+  assert.equal(incomplete.api.status().enabled, false);
+  await incomplete.tick(5_000);
+  assert.equal(incomplete.api.status().enabled, true);
+});
+
+test('desligar a opção durante a espera cancela a retomada', async () => {
+  const first = createHarness();
+  await first.tick(0);
+  first.api.configure({ autoResume: true });
+  first.api.start({ confirmed: true });
+
+  const reload = createHarness({ storage: first.storage, navigationType: 'reload' });
+  await reload.tick(0);
+  assert.equal(reload.api.status().resumePending, true);
+  reload.api.configure({ autoResume: false });
+  await reload.tick(10_000);
+  assert.equal(reload.api.status().enabled, false);
+  assert.equal(reload.api.status().resumePending, false);
+});
+
+test('ciclo pendente após recarga libera cedo com estoque recuperado', async () => {
+  const first = createHarness({ potion: 10, ball: 20 });
+  await first.tick(0);
+  first.api.configure({ autoResume: true, sellAllLoot: false });
+  first.api.start({ confirmed: true });
+  await first.tick(150);
+
+  const reload = createHarness({
+    storage: first.storage,
+    navigationType: 'reload',
+    potion: 10,
+    ball: 20,
+  });
+  await reload.tick(10_000);
+  assert.equal(reload.api.status().enabled, true);
+  assert.equal(reload.api.status().resumeHold, true);
+  assert.deepEqual(reload.store.getState().actionLog, []);
+
+  reload.store.setStock({ potion: 1_010, ball: 1_020 });
+  await reload.tick(150);
+  assert.equal(reload.api.status().resumeHold, false);
+  reload.store.setStock({ potion: 10, ball: 20 });
+  await reload.tick(150);
+  assert.deepEqual(reload.store.getState().actionLog.map((action) => action.type), ['buy', 'buy']);
+});
+
+test('ciclo incerto rearma sozinho após a espera sem duplicar antes dela', async () => {
+  const first = createHarness({ potion: 10, ball: 20 });
+  await first.tick(0);
+  first.api.configure({ autoResume: true, sellAllLoot: false });
+  first.api.start({ confirmed: true });
+  await first.tick(150);
+
+  const reload = createHarness({
+    storage: first.storage,
+    navigationType: 'reload',
+    baseTime: 1_000_150,
+    potion: 10,
+    ball: 20,
+  });
+  await reload.tick(60_000);
+  assert.equal(reload.api.status().resumeHold, true);
+  assert.deepEqual(reload.store.getState().actionLog, []);
+
+  const secondReload = createHarness({
+    storage: first.storage,
+    navigationType: 'reload',
+    baseTime: 1_060_150,
+    potion: 10,
+    ball: 20,
+  });
+  await secondReload.tick(59_999);
+  assert.equal(secondReload.api.status().resumeHold, true);
+  assert.deepEqual(secondReload.store.getState().actionLog, []);
+  await secondReload.tick(151);
+  assert.equal(secondReload.api.status().resumeHold, false);
+  assert.deepEqual(secondReload.store.getState().actionLog.map((action) => action.type), ['buy', 'buy']);
 });
 
 test('snapshot do store diferencia estoque zero de contexto ausente', () => {

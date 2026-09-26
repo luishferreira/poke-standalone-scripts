@@ -59,14 +59,17 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 ### `auto-refill.user.js`
 
 - Userscript próprio, namespace `poke-manager`, executado em `document-start` e instalado em modo pausado por padrão.
-- Usa um subscriber persistente do bridge e confia somente nas mensagens espontâneas `inventory` e `balls`; não adicione polling de estoque.
+- Usa um subscriber persistente do bridge para `inventory` e `balls`. Não faz polling periódico; antes de vendas e de compras com estoque antigo ou desconhecido, pede snapshots pontuais pelo bridge.
 - Possui configurações independentes de produto, threshold e quantidade para potion e ball. Quantidades aceitas vão de 1 a 10.000 e são divididas sequencialmente em requests de no máximo 1.000.
 - Permanece dentro da hunt. Quando ambas as categorias precisam de refill, potion é comprada antes de ball.
-- Antes de cada lote, preserva a reserva de gold configurada. Resposta parcial, falta de gold, erro ou confirmação incompleta interrompem os lotes restantes.
+- Antes de cada lote, preserva apenas a reserva de gold configurada. Potions são compradas antes das balls. Resposta parcial, falta de gold, erro ou confirmação incompleta interrompem os lotes restantes.
 - Cada categoria é desarmada antes do ciclo. Depois de uma tentativa, só rearma automaticamente quando o estoque observado sobe acima do threshold; o usuário também pode rearmar manualmente.
-- Venda de lixo é opcional e ocorre antes da consulta da loja. A ativação explícita da automação com essa opção marcada autoriza vender toda a quantidade de itens `loot` com `npcPrice` entre 1 e 4.000.
-- Usa `GET /api/game/shop`, `POST /api/game/shop/buy`, `POST /api/game/shop/sell`, `/game/items.json` e o refresh autenticado já observado. Nunca registre tokens nem o inventário completo.
+- Venda de lixo é opcional e ocorre antes da consulta da loja. A ativação explícita da automação com essa opção marcada autoriza vender toda a quantidade de itens `loot` com `npcPrice` entre 1 e 4.000, exceto Fresh Herbs (ID 19356). Itens com `npcPrice` zero não são vendidos.
+- Venda automática de Pokémon é opt-in, tem limite máximo de IV configurável (inclusivo) e nunca vende level acima de 100 ou ausente, nem quality acima de 1,7; exclui time, starter, shiny, protegidos e listados. Usa `pokes-get` fresco e `POST /api/game/pokemon/sell` sem confirmação por venda, conforme escolha explícita do usuário para operação noturna.
+- Falha de venda não bloqueia refill: o script consulta o gold atualizado na loja antes das compras, preserva o aviso da venda e não a repete automaticamente. Tentativa automática de novo ciclo só ocorre quando a falha foi antes de qualquer request de mutação. Após envio de compra ou venda incerto, exige retry manual para não duplicar a operação.
+- Usa `GET /api/game/shop`, `POST /api/game/shop/buy`, `POST /api/game/shop/sell`, `POST /api/game/pokemon/sell`, `/game/items.json` e o refresh autenticado já observado. Nunca registre tokens nem o inventário completo.
 - Configuração fica em `piw-auto-refill-settings-v1`; API pública fica em `window.piwAutoRefill`.
+- Resumo e Configurações são vistas do mesmo painel, com posição/tamanho persistidos separadamente por aba. A vista de configurações usa altura proporcional à viewport, limitada a 720 px, e continua arrastável/redimensionável.
 - Registra o botão no `window.piwScripts.uiMenu`; não injeta mais controles em `nav.game-dock`.
 
 ### `auto-pokedex.user.js`
@@ -106,7 +109,7 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 
 ### `pokedream-auto-refill.user.js`
 
-- Userscript próprio para PokeDream, executado em `document-end` e instalado pausado por padrão.
+- Userscript próprio para PokeDream, executado em `document-end` e instalado pausado por padrão. A retomada após reload é opt-in por aba: requer ativação prévia e estado válido do jogo após cinco segundos. Se havia ciclo possivelmente pendente, aguarda o estoque recuperar ou rearma sozinho após dois minutos desde a tentativa, com pelo menos 30 segundos após a recarga. Pausar cancela a intenção.
 - Localiza dinamicamente o módulo principal já carregado pelo jogo e encontra o store pelo contrato público em runtime (`hud`, `actionLog`, `actionSeq`, `recordAction`, `tradeItem` e `sellAllLoot`). Nunca dependa do hash ou do nome minificado de um export.
 - Estoque e gold vêm de `store.getState().hud`; atualizações usam a subscription do próprio store. O script não intercepta `fetch`, XHR ou WebSocket e não lê token, sessão, `step` ou `seq` diretamente.
 - Produtos padrão: Small Potion com threshold 10 e Poké Ball com threshold 20. Os dropdowns oferecem todas as entries compráveis de `kind: 'potion'` e `kind: 'ball'` descobertas no catálogo da build. A quantidade padrão e o máximo por action são 1.000 unidades de cada produto.
@@ -117,7 +120,7 @@ Estas instruções valem para todo o projeto. Se futuramente existir outro `AGEN
 - A venda só pode ser enfileirada depois que todos os novos IDs aparecem em `hud.bagLocks`. Falha, action ausente ou timeout de confirmação cancela a venda e o restante do ciclo sem retry automático.
 - Cada chamada só conta como enfileirada quando a action correspondente aparece no `actionLog` com `seq` novo. Falha ou confirmação parcial interrompe o ciclo e mantém as categorias afetadas desarmadas; não acrescente retry próprio por fora da fila oficial.
 - Se uma atualização mudar o contrato esperado, falhe fechado, pause a automação e mostre incompatibilidade em vez de tentar nomes ou campos por hipótese.
-- Configuração fica em `pokedream-auto-refill-settings-v2`; API pública fica em `window.pokedreamAutoRefill`.
+- Configuração fica em `pokedream-auto-refill-settings-v2`, e a intenção de retomada/ciclo pendente em `pokedream-auto-refill-runtime-v1`, ambos no `sessionStorage`; API pública fica em `window.pokedreamAutoRefill`.
 
 ### `piw-qol.js` — referência externa somente leitura
 
@@ -202,7 +205,7 @@ O mesmo módulo expõe `makePanelDraggable`, que também habilita redimensioname
 - Não envie dados, tokens, inventário ou identidade da conta para domínios externos. Recursos públicos atualmente conhecidos devem permanecer restritos ao domínio oficial do jogo, salvo autorização explícita.
 - Não copie cookies, `Authorization`, `cf_clearance` ou tokens para o código-fonte.
 - O helper do PIW-QOL lê `sessionStorage['pokeweb:tokens']` e tenta `/api/auth/refresh`. Isso é apenas referência de comportamento; se um script próprio precisar de REST autenticado, confirme o fluxo atual e implemente-o fora do PIW-QOL, lidando com 401/403 sem loop de refresh.
-- Operações de venda, compra, lock, depot e mercado são destrutivas. Exija confirmação na UI e nunca as use como “teste” de integração.
+- Operações de venda, compra, lock, depot e mercado são destrutivas. Exija confirmação na UI, exceto no Auto Refill explicitamente configurado e ativado para operar sem confirmação por venda durante a noite. Nunca use essas operações como “teste” de integração.
 - Requests de inventário/Pokémon devem reutilizar snapshots quando forem apenas exibição, mas buscar um snapshot fresco antes de uma operação destrutiva quando o fluxo permitir.
 - Evite polling de APIs. Prefira mensagens que o jogo já recebe normalmente, refresh manual ou cache com invalidação explícita.
 - Auto Refill autentica chamadas same-origin com `sessionStorage['pokeweb:tokens']`, tenta exatamente um refresh em 401 e valida o gold retornado pela loja e por cada lote antes de continuar.
@@ -222,7 +225,7 @@ Só use estes contratos conforme já observados; ainda valide mudanças futuras 
 - Catch VIP server-side usa `catch-result` com `auto: true`; no sucesso também chega `poke-delta`.
 - Atividade de hunt inclui `field`, `field-init`, `field-kill`, `poke-xp`, `pending` e `catch-result`.
 - Boss usa dados observados em `field.fainted`, `field.bossOutcome`, `field.bossLoot` e `field.mobs`.
-- Refill usa `inventory.items` para o estoque da potion selecionada e `balls.counts` para o estoque da ball selecionada.
+- Refill soma as potions conhecidas (IDs 200–204) de `inventory.items` para decidir a compra da potion configurada; usa `balls.counts` para o estoque da ball selecionada.
 
 Eventos frequentes como `pending`, `field`, `field-kill` e `poke-xp` servem para estado local. Não responda a todos com uma nova request.
 

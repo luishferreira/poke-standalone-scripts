@@ -92,6 +92,8 @@ function createHarness({
       { id: 11, name: 'Boundary Loot', category: 'loot', npcPrice: 4_000 },
       { id: 12, name: 'Valuable Loot', category: 'loot', npcPrice: 4_001 },
       { id: 13, name: 'Stone', category: 'stone', npcPrice: 100 },
+      { id: 14, name: 'Free Loot', category: 'loot', npcPrice: 0 },
+      { id: 19356, name: 'Fresh Herbs', category: 'loot', npcPrice: 100 },
     ],
   };
 
@@ -117,6 +119,7 @@ function createHarness({
   }
 
   const context = {
+    AbortController,
     console: { log() {}, warn() {} },
     Date: FakeDate,
     JSON,
@@ -136,6 +139,7 @@ function createHarness({
       readyState: 'loading',
       addEventListener() {},
       querySelector() { return null; },
+      querySelectorAll() { return []; },
     },
     fetch(url, options) {
       return fetchOverride
@@ -183,12 +187,19 @@ function createHarness({
     return socket;
   }
 
+  async function replyToSnapshot(socket, type, payload) {
+    await flushMicrotasks();
+    socket.emit('message', { type, ...payload });
+    await flushMicrotasks();
+  }
+
   return {
     api: context.piwAutoRefill,
     captureSocket,
     context,
     getGold: () => gold,
     requests,
+    replyToSnapshot,
     setGold(value) { gold = value; },
     storage,
     tick,
@@ -218,6 +229,16 @@ test('instala pausado, usa um subscriber e não consulta estoque', async () => {
   assert.deepEqual(harness.requests, []);
   assert.deepEqual(socket.sent, []);
   assert.equal(harness.api.status().enabled, false);
+});
+
+test('status ativo não diz que aguarda estoque já conhecido', () => {
+  const harness = createHarness();
+  const socket = harness.captureSocket();
+  socket.emit('message', { type: 'inventory', items: [{ itemId: 203, quantity: 1_000 }] });
+  socket.emit('message', { type: 'balls', counts: { 4: 1_000 } });
+  assert.equal(harness.api.start().lastMessage, 'Auto Refill ativo.');
+  assert.equal(harness.api.status().potionStock, 1_000);
+  assert.equal(harness.api.status().ballStock, 1_000);
 });
 
 test('compra quantidade quebrada sem sair da hunt', async () => {
@@ -316,10 +337,24 @@ test('vende somente loot de 1 a 4000 e compra potion antes de ball', async () =>
       { itemId: 11, quantity: 3 },
       { itemId: 12, quantity: 4 },
       { itemId: 13, quantity: 5 },
+      { itemId: 14, quantity: 6 },
+      { itemId: 19356, quantity: 7 },
     ],
   });
   socket.emit('message', { type: 'balls', counts: { 4: 5 } });
   await harness.tick(100);
+  assert.deepEqual(socket.sent, [{ type: 'inv-get' }]);
+  await harness.replyToSnapshot(socket, 'inventory', {
+    items: [
+      { itemId: 203, quantity: 5 },
+      { itemId: 10, quantity: 2 },
+      { itemId: 11, quantity: 3 },
+      { itemId: 12, quantity: 4 },
+      { itemId: 13, quantity: 5 },
+      { itemId: 14, quantity: 6 },
+      { itemId: 19356, quantity: 7 },
+    ],
+  });
 
   const relevant = harness.requests.filter((request) => request.url !== '/game/items.json');
   assert.deepEqual(relevant.map((request) => request.url), [
@@ -352,7 +387,7 @@ test('venda habilitada aguarda inventory antes de qualquer operação', async ()
   assert.equal(requestsTo(harness, '/api/game/shop').length, 1);
 });
 
-test('falha na preparação da venda não impede compra com o gold atual', async () => {
+test('falha na preparação da venda não bloqueia refill', async () => {
   const harness = createHarness({
     fetchOverride: async ({ url, options, requests, response, shopCatalog }) => {
       const method = options.method || 'GET';
@@ -370,10 +405,48 @@ test('falha na preparação da venda não impede compra com o gold atual', async
   socket.emit('message', { type: 'inventory', items: [{ itemId: 10, quantity: 1 }] });
   socket.emit('message', { type: 'balls', counts: { 4: 0 } });
   await harness.tick(100);
+  await harness.replyToSnapshot(socket, 'inventory', { items: [{ itemId: 10, quantity: 1 }] });
 
-  assert.equal(requestsTo(harness, '/api/game/shop/buy').length, 1);
+  assert.deepEqual(requestsTo(harness, '/api/game/shop/buy').map((request) => request.body), [
+    { ballId: 4, qty: 10 },
+  ]);
   assert.equal(harness.api.status().lastResult.trash.ok, false);
-  assert.equal(harness.api.status().lastResult.ball.bought, 10);
+  assert.equal(harness.api.status().lastResult.ball.ok, true);
+  assert.equal(harness.api.status().lastMessage.includes('Venda de lixo falhou.'), true);
+});
+
+test('venda parcial de loot permite refill, pula venda de Pokémon e não repete a venda', async () => {
+  const harness = createHarness({
+    fetchOverride: async ({ url, options, requests, response, itemsCatalog, shopCatalog }) => {
+      const body = options.body ? JSON.parse(options.body) : null;
+      requests.push({ url, body });
+      if (url === '/game/items.json') return response(200, itemsCatalog);
+      if (url === '/api/game/shop/sell') return response(200, {
+        ok: true, soldKinds: 1, soldCount: 1, goldGained: 100, gold: 1_000_100,
+      });
+      if (url === '/api/game/shop') return response(200, shopCatalog);
+      if (url === '/api/game/shop/buy') return response(200, { ok: true, bought: body.qty, gold: 900_000 });
+      throw new Error(url);
+    },
+  });
+  const socket = harness.captureSocket();
+  harness.api.configure({ potionEnabled: true, potionThreshold: 0, potionQuantity: 10,
+    ballThreshold: 0, ballQuantity: 10, sellTrash: true, sellPokemon: true });
+  harness.api.start();
+  socket.emit('message', { type: 'inventory', items: [{ itemId: 203, quantity: 0 }, { itemId: 10, quantity: 2 }] });
+  socket.emit('message', { type: 'balls', counts: { 4: 0 } });
+  await harness.tick(100);
+  await harness.replyToSnapshot(socket, 'inventory', { items: [{ itemId: 203, quantity: 0 }, { itemId: 10, quantity: 2 }] });
+  await harness.tick(120_000);
+  assert.equal(requestsTo(harness, '/api/game/shop/sell').length, 1);
+  assert.equal(requestsTo(harness, '/api/game/pokemon/sell').length, 0);
+  assert.deepEqual(requestsTo(harness, '/api/game/shop/buy').map((request) => request.body), [
+    { itemId: 203, qty: 10 },
+    { ballId: 4, qty: 10 },
+  ]);
+  assert.equal(harness.api.status().lastResult.trash.ok, false);
+  assert.equal(harness.api.status().lastResult.potion.ok, true);
+  assert.equal(harness.api.status().lastResult.ball.ok, true);
 });
 
 test('resposta parcial interrompe os lotes e exige rearme', async () => {
@@ -403,6 +476,30 @@ test('resposta parcial interrompe os lotes e exige rearme', async () => {
   socket.emit('message', { type: 'balls', counts: { 4: 0 } });
   await harness.tick(1_000);
   assert.equal(buyCalls, 1);
+});
+
+test('compra sem gold confirmado não libera compra de ball', async () => {
+  const harness = createHarness({
+    fetchOverride: async ({ url, options, requests, response, shopCatalog }) => {
+      const body = options.body ? JSON.parse(options.body) : null;
+      requests.push({ url, body });
+      if (url === '/api/game/shop') return response(200, shopCatalog);
+      if (url === '/api/game/shop/buy') return response(200, { ok: true, bought: body.qty });
+      throw new Error(url);
+    },
+  });
+  const socket = harness.captureSocket();
+  harness.api.configure({ potionThreshold: 10, potionQuantity: 5, ballThreshold: 10, ballQuantity: 5 });
+  harness.api.start();
+  socket.emit('message', { type: 'inventory', items: [{ itemId: 203, quantity: 0 }] });
+  socket.emit('message', { type: 'balls', counts: { 4: 0 } });
+  await harness.tick(100);
+
+  assert.deepEqual(requestsTo(harness, '/api/game/shop/buy').map((request) => request.body), [
+    { itemId: 203, qty: 5 },
+  ]);
+  assert.equal(harness.api.status().lastResult.potion.reason, 'missing_gold_confirmation');
+  assert.equal(harness.api.status().lastResult.potion.ok, false);
 });
 
 test('sem gold não repete até rearme manual', async () => {
@@ -458,3 +555,161 @@ test('uninstall remove somente o subscriber do Auto Refill', () => {
   assert.equal(harness.context.piwScripts.wsBridge, bridge);
   assert.equal(harness.context.piwAutoRefill, undefined);
 });
+
+test('balls recebidas primeiro esperam inventário e compram potion antes', async () => {
+  const harness = createHarness();
+  const socket = harness.captureSocket();
+  harness.api.configure({ potionThreshold: 20, potionQuantity: 10, ballThreshold: 10, ballQuantity: 10 });
+  harness.api.start();
+  socket.emit('message', { type: 'balls', counts: { 4: 0 } });
+  await harness.tick(100);
+  assert.deepEqual(socket.sent, [{ type: 'inv-get' }]);
+  assert.deepEqual(requestsTo(harness, '/api/game/shop/buy'), []);
+  await harness.replyToSnapshot(socket, 'inventory', { items: [{ itemId: 200, quantity: 5 }] });
+  assert.deepEqual(requestsTo(harness, '/api/game/shop/buy').map((request) => request.body), [
+    { itemId: 203, qty: 10 },
+    { ballId: 4, qty: 10 },
+  ]);
+});
+
+test('potion com estoque antigo consulta inventário e não compra se já foi reposta', async () => {
+  const harness = createHarness();
+  const socket = harness.captureSocket();
+  harness.api.configure({ potionThreshold: 20, potionQuantity: 10, ballEnabled: false });
+  socket.emit('message', { type: 'inventory', items: [{ itemId: 203, quantity: 5 }] });
+  await harness.tick(61_000);
+  harness.api.start();
+  await harness.tick(100);
+  assert.deepEqual(socket.sent, [{ type: 'inv-get' }]);
+  await harness.replyToSnapshot(socket, 'inventory', { items: [{ itemId: 203, quantity: 25 }] });
+  assert.deepEqual(requestsTo(harness, '/api/game/shop/buy'), []);
+  assert.equal(harness.api.status().potionStock, 25);
+});
+
+test('balls podem gastar mais de metade do gold sem piso adicional', async () => {
+  const harness = createHarness();
+  const socket = harness.captureSocket();
+  harness.api.configure({ potionEnabled: false, ballThreshold: 0, ballQuantity: 6_000 });
+  harness.api.start();
+  socket.emit('message', { type: 'balls', counts: { 4: 0 } });
+  await harness.tick(100);
+  assert.equal(requestsTo(harness, '/api/game/shop/buy').length, 6);
+  assert.equal(harness.getGold(), 400_000);
+  assert.equal(harness.api.status().lastResult.ball.ok, true);
+});
+
+test('venda automática usa lista fresca, IV configurável e bloqueia quality e level altos', async () => {
+  const harness = createHarness({
+    fetchOverride: async ({ url, options, requests, response, shopCatalog, setGold }) => {
+      const body = options.body ? JSON.parse(options.body) : null;
+      requests.push({ url, body });
+      if (url === '/api/game/pokemon/sell') {
+        setGold(1_015_000);
+        return response(200, { sold: body.pokeIds.length, goldGained: 15_000, gold: 1_015_000 });
+      }
+      if (url === '/api/game/shop') return response(200, shopCatalog);
+      if (url === '/api/game/shop/buy') return response(200, { ok: true, bought: body.qty, gold: 1_014_000 });
+      throw new Error(url);
+    },
+  });
+  const socket = harness.captureSocket();
+  harness.api.configure({ potionEnabled: false, ballThreshold: 0, ballQuantity: 10, sellPokemon: true, pokemonMaxIv: 160 });
+  harness.api.start();
+  socket.emit('message', { type: 'balls', counts: { 4: 0 } });
+  await harness.tick(100);
+  assert.deepEqual(socket.sent, [{ type: 'pokes-get' }]);
+  await harness.replyToSnapshot(socket, 'pokes', { list: [
+    { id: 'safe-a', ivTotal: 119, quality: 1.69, level: 99, sellValue: 1000 },
+    { id: 'safe-b', ivTotal: 160, quality: 1.7, level: 100, sellValue: 1000 },
+    { id: 'keep-level', ivTotal: 10, quality: 1.1, level: 101, sellValue: 1000 },
+    { id: 'keep-missing-level', ivTotal: 10, quality: 1.1, sellValue: 1000 },
+    { id: 'keep-quality', ivTotal: 10, quality: 1.71, level: 10, sellValue: 1000 },
+    { id: 'keep-iv', ivTotal: 179, quality: 1.2, level: 10, sellValue: 1000 },
+    { id: 'keep-missing-quality', ivTotal: 10, level: 10, sellValue: 1000 },
+    { id: 'keep-shiny', ivTotal: 10, quality: 1.1, level: 10, shiny: true, sellValue: 1000 },
+    { id: 'keep-locked', ivTotal: 10, quality: 1.1, level: 10, locked: true, sellValue: 1000 },
+    { id: 'keep-team', ivTotal: 10, quality: 1.1, level: 10, team: true, sellValue: 1000 },
+    { id: 'keep-market', ivTotal: 10, quality: 1.1, level: 10, listed: true, sellValue: 1000 },
+  ] });
+  assert.deepEqual(requestsTo(harness, '/api/game/pokemon/sell')[0].body, { pokeIds: ['safe-a', 'safe-b'] });
+  assert.equal(harness.api.status().lastResult.pokemon.soldCount, 2);
+});
+
+test('limite de IV inválido preserva o default e zero é aceito', async () => {
+  const harness = createHarness();
+  assert.equal(harness.api.configure({ pokemonMaxIv: 999 }).settings.pokemonMaxIv, 160);
+  assert.equal(harness.api.configure({ pokemonMaxIv: 0 }).settings.pokemonMaxIv, 0);
+});
+
+test('venda parcial de Pokémon permite refill e não tenta vender novamente sozinha', async () => {
+  const harness = createHarness({
+    fetchOverride: async ({ url, options, requests, response, shopCatalog }) => {
+      const body = options.body ? JSON.parse(options.body) : null;
+      requests.push({ url, body });
+      if (url === '/api/game/pokemon/sell') return response(200, { sold: 0, goldGained: 0, gold: 1_000_000 });
+      if (url === '/api/game/shop') return response(200, shopCatalog);
+      if (url === '/api/game/shop/buy') return response(200, { ok: true, bought: body.qty, gold: 900_000 });
+      throw new Error(url);
+    },
+  });
+  const socket = harness.captureSocket();
+  harness.api.configure({ potionEnabled: false, ballThreshold: 0, sellPokemon: true });
+  harness.api.start();
+  socket.emit('message', { type: 'balls', counts: { 4: 0 } });
+  await harness.tick(100);
+  await harness.replyToSnapshot(socket, 'pokes', { list: [
+    { id: 'sell-me', ivTotal: 100, quality: 1.2, level: 50, sellValue: 100 },
+  ] });
+  await harness.tick(120_000);
+  assert.equal(requestsTo(harness, '/api/game/pokemon/sell').length, 1);
+  assert.deepEqual(requestsTo(harness, '/api/game/shop/buy').map((request) => request.body), [
+    { ballId: 4, qty: 1000 },
+  ]);
+  assert.equal(harness.api.status().lastResult.pokemon.reason, 'partial_sale');
+  assert.equal(harness.api.status().lastMessage.includes('Venda de Pokémon falhou.'), true);
+});
+
+test('pausar enquanto espera Pokémon cancela a venda', async () => {
+  const harness = createHarness();
+  const socket = harness.captureSocket();
+  harness.api.configure({ potionEnabled: false, ballThreshold: 0, sellPokemon: true });
+  harness.api.start();
+  socket.emit('message', { type: 'balls', counts: { 4: 0 } });
+  await harness.tick(100);
+  harness.api.stop();
+  socket.emit('message', { type: 'pokes', list: [{ id: 'x', ivTotal: 10, quality: 1, level: 10, sellValue: 1000 }] });
+  await harness.tick(1);
+  assert.deepEqual(requestsTo(harness, '/api/game/pokemon/sell'), []);
+  assert.equal(harness.api.status().enabled, false);
+});
+
+test('rearmar durante ciclo não duplica compra', async () => {
+  let releaseShop;
+  const shopPending = new Promise((resolve) => { releaseShop = resolve; });
+  const harness = createHarness({
+    fetchOverride: async ({ url, options, requests, response, shopCatalog }) => {
+      const body = options.body ? JSON.parse(options.body) : null;
+      requests.push({ url, body });
+      if (url === '/api/game/shop') return shopPending;
+      if (url === '/api/game/shop/buy') return response(200, { ok: true, bought: body.qty, gold: 999_000 });
+      throw new Error(url);
+    },
+  });
+  const socket = harness.captureSocket();
+  harness.api.configure({ potionEnabled: false, ballThreshold: 0, ballQuantity: 10 });
+  harness.api.start();
+  socket.emit('message', { type: 'balls', counts: { 4: 0 } });
+  await harness.tick(100);
+  harness.api.rearm('ball');
+  releaseShop({ ok: true, status: 200, async json() { return shopCatalogFor(harness); } });
+  await harness.tick(1_000);
+  assert.equal(requestsTo(harness, '/api/game/shop/buy').length, 1);
+});
+
+function shopCatalogFor(harness) {
+  return {
+    gold: harness.getGold(),
+    items: [{ id: 203, name: 'Hyper Potion', priceGold: 55, category: 'heal' }],
+    balls: [{ id: 4, name: 'Ultra Ball', priceGold: 100 }],
+  };
+}

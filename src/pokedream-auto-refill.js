@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PokeDream Auto Refill
 // @namespace    poke-manager
-// @version      2.5.1
+// @version      2.6.1
 // @description  Protege itens, vende o loot restante e repõe balls e potions configuráveis pela fila oficial do jogo.
 // @author       Luis
 // @match        https://pokedream.com.br/*
@@ -24,6 +24,7 @@
   }
 
   const SETTINGS_KEY = 'pokedream-auto-refill-settings-v2';
+  const RUNTIME_KEY = 'pokedream-auto-refill-runtime-v1';
   const SMALL_POTION_ID = 'small_potion';
   const POKE_BALL_ID = 'poke_ball';
   const SHINY_PRESET_ITEM_IDS = Object.freeze([
@@ -156,6 +157,9 @@
   const ADAPTER_RETRY_MS = 500;
   const ADAPTER_MAX_ATTEMPTS = 120;
   const INTERFACE_DEBOUNCE_MS = 100;
+  const RESUME_READY_DELAY_MS = 5_000;
+  const UNCERTAIN_CYCLE_WAIT_MS = 120_000;
+  const RESUME_MIN_HOLD_MS = 30_000;
   const DEFAULT_SETTINGS = Object.freeze({
     potionEnabled: true,
     potionItemId: SMALL_POTION_ID,
@@ -166,6 +170,7 @@
     ballThreshold: 20,
     ballQuantity: 1_000,
     sellAllLoot: true,
+    autoResume: false,
     protectedItemIds: [],
   });
   const testDependencies = window.__POKEDREAM_AUTO_REFILL_TEST_DEPS__ || null;
@@ -207,6 +212,7 @@
       ballThreshold: normalizeNonNegativeInteger(input.ballThreshold, DEFAULT_SETTINGS.ballThreshold),
       ballQuantity: normalizeQuantity(input.ballQuantity, DEFAULT_SETTINGS.ballQuantity),
       sellAllLoot: input.sellAllLoot !== false,
+      autoResume: input.autoResume === true,
       protectedItemIds,
     };
   }
@@ -216,6 +222,34 @@
       return normalizeSettings(JSON.parse(sessionStorage.getItem(SETTINGS_KEY) || '{}'));
     } catch {
       return { ...DEFAULT_SETTINGS };
+    }
+  }
+
+  function loadRuntime() {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(RUNTIME_KEY) || '{}');
+      return {
+        resumeWanted: saved.resumeWanted === true,
+        pendingCycle: saved.pendingCycle && typeof saved.pendingCycle === 'object'
+          ? {
+            potion: saved.pendingCycle.potion === true,
+            ball: saved.pendingCycle.ball === true,
+            startedAt: Number.isFinite(saved.pendingCycle.startedAt) && saved.pendingCycle.startedAt > 0
+              ? saved.pendingCycle.startedAt
+              : Date.now(),
+          }
+          : null,
+      };
+    } catch {
+      return { resumeWanted: false, pendingCycle: null };
+    }
+  }
+
+  function isPageReload() {
+    try {
+      return performance.getEntriesByType('navigation')[0]?.type === 'reload';
+    } catch {
+      return false;
     }
   }
 
@@ -442,9 +476,15 @@
   }
 
   const settings = loadSettings();
+  const runtime = loadRuntime();
   const state = {
     installed: true,
     enabled: false,
+    resumePending: settings.autoResume && runtime.resumeWanted && isPageReload(),
+    resumeHold: false,
+    resumeTimer: null,
+    resumeHoldTimer: null,
+    resumeReadyObserved: false,
     adapterStatus: 'loading',
     adapterError: null,
     adapterAttempts: 0,
@@ -478,6 +518,16 @@
     }
   }
 
+  function saveRuntime() {
+    try {
+      sessionStorage.setItem(RUNTIME_KEY, JSON.stringify(runtime));
+    } catch (error) {
+      console.warn('[PokeDream Auto Refill] Não foi possível salvar o estado de retomada.', {
+        message: error?.message || String(error),
+      });
+    }
+  }
+
   function formatNumber(value) {
     return value == null ? '—' : Number(value).toLocaleString('pt-BR');
   }
@@ -497,6 +547,8 @@
       state.adapterStatus = 'incompatible';
       state.adapterError = error?.message || String(error);
       state.enabled = false;
+      runtime.resumeWanted = false;
+      saveRuntime();
       setMessage('O adaptador perdeu acesso ao estado do jogo. Auto Refill pausado.', true);
       return;
     }
@@ -513,6 +565,18 @@
     state.ballStock = snapshot.ballStock;
     state.gold = snapshot.gold;
     state.bagLocks = [...snapshot.bagLocks];
+    if (state.resumeHold && runtime.pendingCycle &&
+        (!runtime.pendingCycle.potion || state.potionStock > settings.potionThreshold) &&
+        (!runtime.pendingCycle.ball || state.ballStock > settings.ballThreshold)) {
+      runtime.pendingCycle = null;
+      state.resumeHold = false;
+      if (state.resumeHoldTimer) clearTimeout(state.resumeHoldTimer);
+      state.resumeHoldTimer = null;
+      state.potionArmed = true;
+      state.ballArmed = true;
+      saveRuntime();
+      setMessage('Estoque recuperado. Auto Refill retomado.');
+    }
     if (state.potionStock > settings.potionThreshold) state.potionArmed = true;
     if (state.ballStock > settings.ballThreshold) state.ballArmed = true;
     scheduleRefillCheck();
@@ -548,8 +612,84 @@
     }
     state.gameStoreUnsubscribe = store.subscribe(syncGameState);
     syncGameState();
-    setMessage('Adaptador pronto. Auto Refill pausado.');
+    if (state.resumePending) {
+      state.resumeReadyObserved = resumeContextReady();
+      setMessage('Aguardando o estado do jogo antes de retomar o Auto Refill...');
+      scheduleResumeCheck();
+    } else {
+      setMessage('Adaptador pronto. Auto Refill pausado.');
+    }
     return true;
+  }
+
+  function resumeContextReady() {
+    if (state.adapterStatus !== 'ready' || !state.gameStore || !state.itemCatalog) return false;
+    try {
+      const gameState = state.gameStore.getState();
+      const snapshot = parseGameSnapshot(gameState, settings);
+      return Boolean(snapshot && snapshot.gold !== null &&
+        (Object.keys(snapshot.bag).length > 0 || snapshot.gold > 0) &&
+        Array.isArray(gameState.hud.bagLocks) &&
+        Array.isArray(gameState.actionLog) &&
+        Number.isInteger(gameState.actionSeq) && gameState.actionSeq >= 0);
+    } catch {
+      return false;
+    }
+  }
+
+  function scheduleResumeCheck() {
+    if (!state.installed || !state.resumePending || state.resumeTimer ||
+        state.adapterStatus !== 'ready') return;
+    state.resumeTimer = setTimeout(() => {
+      state.resumeTimer = null;
+      if (!state.installed || !state.resumePending) return;
+      if (!resumeContextReady()) {
+        state.resumeReadyObserved = false;
+        scheduleResumeCheck();
+        return;
+      }
+      if (!state.resumeReadyObserved) {
+        state.resumeReadyObserved = true;
+        scheduleResumeCheck();
+        return;
+      }
+      state.resumePending = false;
+      state.enabled = true;
+      state.resumeHold = Boolean(runtime.pendingCycle);
+      if (state.resumeHold) {
+        state.potionArmed = false;
+        state.ballArmed = false;
+        setMessage('Ciclo anterior incerto. Aguardando estoque ou prazo de retomada automática.');
+        scheduleResumeHoldCheck();
+      } else {
+        setMessage('Auto Refill retomado após a recarga.');
+      }
+      syncGameState();
+    }, RESUME_READY_DELAY_MS);
+  }
+
+  function scheduleResumeHoldCheck(delay = null) {
+    if (!state.installed || !state.enabled || !state.resumeHold || state.resumeHoldTimer) return;
+    const elapsedWait = (runtime.pendingCycle?.startedAt || Date.now()) +
+      UNCERTAIN_CYCLE_WAIT_MS - Date.now();
+    const wait = delay ?? Math.max(RESUME_MIN_HOLD_MS, elapsedWait);
+    state.resumeHoldTimer = setTimeout(() => {
+      state.resumeHoldTimer = null;
+      if (!state.installed || !state.enabled || !state.resumeHold) return;
+      if (!resumeContextReady()) {
+        scheduleResumeHoldCheck(RESUME_READY_DELAY_MS);
+        return;
+      }
+      syncGameState();
+      if (!state.resumeHold) return;
+      state.resumeHold = false;
+      runtime.pendingCycle = null;
+      saveRuntime();
+      state.potionArmed = true;
+      state.ballArmed = true;
+      setMessage('Estado reavaliado. Auto Refill rearmado automaticamente.');
+      scheduleRefillCheck();
+    }, wait);
   }
 
   function scheduleAdapterDiscovery(delay = ADAPTER_RETRY_MS) {
@@ -617,13 +757,13 @@
   }
 
   function scheduleRefillCheck() {
-    if (!state.installed || !state.enabled || state.cycleRunning || state.cycleTimer) return;
+    if (!state.installed || !state.enabled || state.resumeHold || state.cycleRunning || state.cycleTimer) return;
     state.cycleTimer = setTimeout(runRefillCycle, CYCLE_DEBOUNCE_MS);
   }
 
   async function runRefillCycle() {
     state.cycleTimer = null;
-    if (!state.installed || !state.enabled || state.cycleRunning) return false;
+    if (!state.installed || !state.enabled || state.resumeHold || state.cycleRunning) return false;
     const needsPotion = categoryNeedsRefill('potion');
     const needsBall = categoryNeedsRefill('ball');
     if (!needsPotion && !needsBall) return false;
@@ -634,6 +774,8 @@
 
     if (needsPotion) state.potionArmed = false;
     if (needsBall) state.ballArmed = false;
+    runtime.pendingCycle = { potion: needsPotion, ball: needsBall, startedAt: Date.now() };
+    saveRuntime();
     state.cycleRunning = true;
     state.lastResult = null;
     setMessage('Adicionando o refill à fila oficial do jogo...');
@@ -689,6 +831,13 @@
   }
 
   function rearm(category = 'all') {
+    if (state.resumeHold) {
+      state.resumeHold = false;
+    }
+    if (state.resumeHoldTimer) clearTimeout(state.resumeHoldTimer);
+    state.resumeHoldTimer = null;
+    runtime.pendingCycle = null;
+    saveRuntime();
     if (category === 'potion' || category === 'all') state.potionArmed = true;
     if (category === 'ball' || category === 'all') state.ballArmed = true;
     setMessage('Categorias rearmadas.');
@@ -721,6 +870,13 @@
     }
     Object.assign(settings, normalized);
     saveSettings();
+    if (!settings.autoResume && state.resumePending) {
+      state.resumePending = false;
+      if (state.resumeTimer) clearTimeout(state.resumeTimer);
+      state.resumeTimer = null;
+    }
+    runtime.resumeWanted = settings.autoResume && (state.enabled || state.resumePending);
+    saveRuntime();
     state.potionArmed = true;
     state.ballArmed = true;
     syncGameState();
@@ -767,6 +923,15 @@
       return false;
     }
     state.enabled = true;
+    state.resumePending = false;
+    state.resumeHold = false;
+    if (state.resumeHoldTimer) clearTimeout(state.resumeHoldTimer);
+    state.resumeHoldTimer = null;
+    if (state.resumeTimer) clearTimeout(state.resumeTimer);
+    state.resumeTimer = null;
+    runtime.resumeWanted = settings.autoResume;
+    runtime.pendingCycle = null;
+    saveRuntime();
     state.potionArmed = true;
     state.ballArmed = true;
     setMessage('Auto Refill ativo. Observando o store oficial do jogo.');
@@ -777,6 +942,14 @@
 
   function stop() {
     state.enabled = false;
+    state.resumePending = false;
+    state.resumeHold = false;
+    if (state.resumeHoldTimer) clearTimeout(state.resumeHoldTimer);
+    state.resumeHoldTimer = null;
+    if (state.resumeTimer) clearTimeout(state.resumeTimer);
+    state.resumeTimer = null;
+    runtime.resumeWanted = false;
+    saveRuntime();
     if (state.cycleTimer) clearTimeout(state.cycleTimer);
     state.cycleTimer = null;
     setMessage(state.adapterStatus === 'ready'
@@ -982,6 +1155,11 @@
       label: 'Vender todo loot antes das compras',
       checked: settings.sellAllLoot,
     });
+    const resumeField = createCheckField({
+      id: 'pdr-auto-resume',
+      label: 'Retomar após recarregar esta aba',
+      checked: settings.autoResume,
+    });
     const protectionFieldset = document.createElement('fieldset');
     const protectionLegend = document.createElement('legend');
     protectionLegend.textContent = 'Proteção da mochila';
@@ -1099,7 +1277,7 @@
     rearmButton.textContent = 'Rearmar';
     rearmButton.addEventListener('click', () => rearm('all'));
     actions.append(toggle, rearmButton);
-    body.append(status, summary, potionFieldset, ballFieldset, sellField, protectionFieldset, note, actions);
+    body.append(status, summary, potionFieldset, ballFieldset, sellField, protectionFieldset, resumeField, note, actions);
     panel.append(header, body);
     document.body.append(panel, protectionPanel);
 
@@ -1115,6 +1293,7 @@
     bind('#pdr-ball-threshold', 'change', (event) => configure({ ballThreshold: event.target.value }));
     bind('#pdr-ball-quantity', 'change', (event) => configure({ ballQuantity: event.target.value }));
     bind('#pdr-sell-loot', 'change', (event) => configure({ sellAllLoot: event.target.checked }));
+    bind('#pdr-auto-resume', 'change', (event) => configure({ autoResume: event.target.checked }));
     const bindPreset = ({ presetApply, presetExpand, presetList }, apply) => {
       presetApply.addEventListener('click', apply);
       presetExpand.addEventListener('click', () => {
@@ -1391,6 +1570,8 @@
     }
     const rearmButton = panel.querySelector('.pdr-rearm');
     if (rearmButton) rearmButton.disabled = state.cycleRunning;
+    const resumeCheckbox = panel.querySelector('#pdr-auto-resume');
+    if (resumeCheckbox) resumeCheckbox.checked = settings.autoResume;
   }
 
   function status() {
@@ -1403,6 +1584,8 @@
     return {
       installed: state.installed,
       enabled: state.enabled,
+      resumePending: state.resumePending,
+      resumeHold: state.resumeHold,
       adapterStatus: state.adapterStatus,
       adapterReady: state.adapterStatus === 'ready',
       adapterError: state.adapterError,
