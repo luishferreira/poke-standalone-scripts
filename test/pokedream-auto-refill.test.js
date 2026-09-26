@@ -17,6 +17,7 @@ function createFakeStore({
   gold = 50_000,
   startSeq = 40,
   queueSell = true,
+  throwAfterSell = false,
   queueBuy = true,
   applyPurchases = true,
   bag = {},
@@ -46,6 +47,7 @@ function createFakeStore({
   const sellAllLoot = () => {
     replaceHud({ ...state.hud, money: state.hud.money + 500 });
     if (queueSell) recordAction('sellAllLoot', {});
+    if (throwAfterSell) throw new Error('Falha simulada após enviar venda');
     return { ok: true, n: 3, gold: 500 };
   };
   const tradeItem = (operation, itemId, quantity) => {
@@ -104,6 +106,7 @@ function createFakeStore({
     });
   };
   store.setGold = (goldAmount) => replaceHud({ ...state.hud, money: goldAmount });
+  store.setBagLocks = (locks) => replaceHud({ ...state.hud, bagLocks: [...locks] });
   store.listenerCount = () => listeners.size;
   return store;
 }
@@ -707,10 +710,10 @@ test('preset de shiny materializa somente os itens da lista presentes no catálo
   );
 });
 
-test('cancela a venda quando um bloqueio não aparece no estado oficial', async () => {
+test('bloqueio não confirmado cancela somente a venda e mantém a compra funcionando', async () => {
   const harness = createHarness({
-    potion: 10,
-    ball: 21,
+    potion: 500,
+    ball: 20,
     bag: { fire_stone: 1 },
     applyLocks: false,
   });
@@ -721,9 +724,25 @@ test('cancela a venda quando um bloqueio não aparece no estado oficial', async 
 
   assert.deepEqual(harness.store.getState().actionLog.map((action) => action.type), [
     'toggleBagLock',
+    'buy',
   ]);
-  assert.equal(harness.api.status().lastResult.accepted, false);
-  assert.match(harness.api.status().lastResult.error, /bloqueios não foram confirmados/i);
+  assert.equal(harness.store.getState().actionLog[1].payload.itemId, 'poke_ball');
+  assert.equal(harness.api.status().lastResult.accepted, true);
+  assert.equal(harness.api.status().lastResult.stockConfirmed, true);
+  assert.equal(harness.api.status().lastResult.saleStatus, 'skipped');
+  assert.match(harness.api.status().lastResult.saleWarning, /Bloqueios não confirmados/i);
+  assert.equal(harness.api.status().ballArmed, true);
+  assert.match(harness.api.status().lastMessage, /Monitorando estoque.*Venda de loot pendente/);
+
+  // Next refill consults fresh locks; a late confirmation must not be toggled off.
+  harness.store.setBagLocks(['fire_stone']);
+  harness.store.setStock({ ball: 20 });
+  await harness.tick(150);
+  assert.deepEqual(harness.store.getState().actionLog.map((action) => action.type), [
+    'toggleBagLock', 'buy', 'sellAllLoot', 'buy',
+  ]);
+  assert.deepEqual(harness.store.getState().hud.bagLocks, ['fire_stone']);
+  assert.equal(harness.api.status().lastResult.saleWarning, null);
 });
 
 test('não vende quando o jogo deixa de enfileirar a action de bloqueio', async () => {
@@ -738,8 +757,69 @@ test('não vende quando o jogo deixa de enfileirar a action de bloqueio', async 
   harness.api.start({ confirmed: true });
   await harness.tick(150);
 
-  assert.deepEqual(harness.store.getState().actionLog, []);
-  assert.equal(harness.api.status().lastResult.accepted, false);
+  assert.deepEqual(harness.store.getState().actionLog.map((action) => action.type), ['buy']);
+  assert.equal(harness.api.status().lastResult.accepted, true);
+  assert.equal(harness.api.status().lastResult.saleStatus, 'skipped');
+  assert.match(harness.api.status().lastResult.saleWarning, /action toggleBagLock/);
+});
+
+test('novo ciclo tenta proteger os itens ainda desbloqueados sem travar o refill', async () => {
+  const harness = createHarness({ potion: 500, ball: 20, bag: { fire_stone: 1 }, applyLocks: false });
+  await harness.tick(0);
+  harness.api.applyStonePreset();
+  harness.api.start({ confirmed: true });
+  await harness.tick(5_500);
+  harness.store.setStock({ ball: 20 });
+  await harness.tick(5_500);
+  assert.deepEqual(harness.store.getState().actionLog.map((action) => action.type), [
+    'toggleBagLock', 'buy', 'toggleBagLock', 'buy',
+  ]);
+  assert.equal(harness.api.status().ballArmed, true);
+  assert.equal(harness.api.status().lastResult.stockConfirmed, true);
+});
+
+test('falha incerta na venda não repete a venda e permite a compra', async () => {
+  const harness = createHarness({ potion: 500, ball: 20, throwAfterSell: true });
+  await harness.tick(0);
+  harness.api.start({ confirmed: true });
+  await harness.tick(150);
+  assert.deepEqual(harness.store.getState().actionLog.map((action) => action.type), ['sellAllLoot', 'buy']);
+  assert.equal(harness.api.status().lastResult.accepted, true);
+  assert.equal(harness.api.status().lastResult.saleStatus, 'uncertain');
+  assert.equal(harness.api.status().ballArmed, true);
+  await harness.tick(30_000);
+  assert.equal(harness.store.getState().actionLog.length, 2);
+});
+
+test('actions nativas intercaladas durante a espera não invalidam o refill', async () => {
+  const harness = createHarness({ potion: 500, ball: 20, bag: { fire_stone: 1 }, applyLocks: false });
+  await harness.tick(0);
+  harness.api.applyStonePreset();
+  harness.api.start({ confirmed: true });
+  await harness.tick(150);
+  harness.store.getState().recordAction('unrelated', {});
+  harness.store.setBagLocks(['fire_stone']);
+  await harness.tick(0);
+  assert.deepEqual(harness.store.getState().actionLog.map((action) => action.type), [
+    'toggleBagLock', 'unrelated', 'sellAllLoot', 'buy',
+  ]);
+  assert.equal(harness.api.status().lastResult.accepted, true);
+  assert.equal(harness.api.status().lastResult.stockConfirmed, true);
+  assert.equal(harness.api.status().ballArmed, true);
+});
+
+test('pausar durante a espera dos locks impede venda e compra posteriores', async () => {
+  const harness = createHarness({ potion: 500, ball: 20, bag: { fire_stone: 1 }, applyLocks: false });
+  await harness.tick(0);
+  harness.api.applyStonePreset();
+  harness.api.start({ confirmed: true });
+  await harness.tick(150);
+  harness.api.stop();
+  harness.store.setBagLocks(['fire_stone']);
+  await harness.tick(5_500);
+  assert.deepEqual(harness.store.getState().actionLog.map((action) => action.type), ['toggleBagLock']);
+  assert.equal(harness.api.status().enabled, false);
+  assert.equal(harness.api.status().lastMessage, 'Auto Refill pausado.');
 });
 
 test('action ausente interrompe o ciclo sem retry automático', async () => {

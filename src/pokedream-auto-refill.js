@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PokeDream Auto Refill
 // @namespace    poke-manager
-// @version      2.8.1
+// @version      2.8.2
 // @description  Protege itens, vende o loot restante e repõe balls e potions configuráveis pela fila oficial do jogo.
 // @author       Luis
 // @match        https://pokedream.com.br/*
@@ -561,7 +561,8 @@
     clearPurchaseConfirmation();
     runtime.pendingCycle = null;
     saveRuntime();
-    if (state.enabled) setMessage('Auto Refill ativo. Monitorando estoque.');
+    if (state.enabled) setMessage('Auto Refill ativo. Monitorando estoque.' +
+      (state.lastResult.saleWarning ? ' Venda de loot pendente.' : ''));
   }
 
   function watchPurchaseConfirmation(items) {
@@ -823,19 +824,48 @@
     state.lastResult = null;
     setMessage('Adicionando o refill à fila oficial do jogo...');
     let cycleSucceeded = false;
+    let saleWarning = null;
+    let saleStatus = settings.sellAllLoot ? 'skipped' : 'disabled';
     try {
-      const protection = settings.sellAllLoot
-        ? getProtectionPlan(state.gameStore.getState(), state.itemCatalog)
-        : { missing: [] };
-      if (!protection) throw new Error('O jogo não forneceu o inventário necessário para proteger os itens.');
-      const protectedActions = queueProtectionActions(state.gameStore, protection.missing);
-      if (protection.missing.length > 0) {
-        setMessage(`Aguardando confirmação de ${protection.missing.length} bloqueios oficiais...`);
-        const confirmed = await waitForBagLocks(state.gameStore, protection.missing);
-        if (!confirmed) {
-          throw new Error('Os bloqueios não foram confirmados pelo estado oficial; a venda foi cancelada.');
+      let protectedActions = [];
+      const saleActions = [];
+      if (settings.sellAllLoot) {
+        let safeToSell = false;
+        try {
+          const protection = getProtectionPlan(state.gameStore.getState(), state.itemCatalog);
+          if (!protection) throw new Error('Inventário indisponível para conferir os itens protegidos.');
+          protectedActions = queueProtectionActions(state.gameStore, protection.missing);
+          if (protection.missing.length > 0) {
+            setMessage(`Aguardando confirmação de ${protection.missing.length} bloqueios oficiais...`);
+            const confirmed = await waitForBagLocks(state.gameStore, protection.missing);
+            if (!confirmed) throw new Error('Bloqueios não confirmados; o loot não será vendido neste ciclo.');
+          }
+          // Recheck current ownership/locks immediately before selling, not the earlier snapshot.
+          const currentProtection = getProtectionPlan(state.gameStore.getState(), state.itemCatalog);
+          if (!currentProtection || currentProtection.missing.length > 0) {
+            throw new Error('Proteções ainda pendentes; o loot não será vendido neste ciclo.');
+          }
+          safeToSell = true;
+        } catch (error) {
+          saleWarning = error?.message || String(error);
+        }
+        if (!state.enabled || !state.installed) return false;
+        if (safeToSell) {
+          try {
+            saleStatus = 'uncertain';
+            saleActions.push(invokeAndCaptureAction(
+              state.gameStore,
+              { type: 'sellAllLoot' },
+              () => state.gameStore.getState().sellAllLoot(),
+            ));
+            saleStatus = 'queued';
+          } catch (error) {
+            // Never replay a sale whose effect is uncertain. Buying is an independent action.
+            saleWarning = `Venda de loot não confirmada: ${error?.message || String(error)}`;
+          }
         }
       }
+      if (!state.enabled || !state.installed) return false;
       const beforePurchase = parseGameSnapshot(state.gameStore.getState(), settings);
       if (!beforePurchase) throw new Error('O inventário ficou indisponível antes da compra.');
       const expectedItems = [
@@ -843,7 +873,7 @@
         ...(needsBall ? [{ itemId: settings.ballItemId, target: beforePurchase.ballStock + settings.ballQuantity, observed: false }] : []),
       ];
       const refillActions = queueRefillActions(state.gameStore, {
-        sellAllLoot: settings.sellAllLoot,
+        sellAllLoot: false,
         needsPotion,
         needsBall,
         potionItemId: settings.potionItemId,
@@ -851,23 +881,23 @@
         potionQuantity: settings.potionQuantity,
         ballQuantity: settings.ballQuantity,
       });
-      const queued = [...protectedActions, ...refillActions];
-      for (let index = 1; index < queued.length; index += 1) {
-        if (queued[index].seq !== queued[index - 1].seq + 1) {
-          throw new Error('O jogo não gerou seq consecutivo para proteção e refill.');
-        }
-      }
+      // Native actions can interleave while awaiting locks. Each capture already checks a new seq.
+      const queued = [...protectedActions, ...saleActions, ...refillActions];
       state.lastResult = {
         accepted: true,
         stockConfirmed: false,
+        saleStatus,
+        saleWarning,
         queued: queued.map(({ seq, step, type }) => ({ seq, step, type })),
       };
       cycleSucceeded = true;
       watchPurchaseConfirmation(expectedItems);
-      setMessage('Compra enviada. Aguardando atualização do estoque...');
+      setMessage(saleWarning
+        ? 'Compra enviada sem depender da venda do loot. Aguardando atualização do estoque...'
+        : 'Compra enviada. Aguardando atualização do estoque...');
       return true;
     } catch (error) {
-      state.lastResult = { accepted: false, error: error?.message || String(error) };
+      state.lastResult = { accepted: false, saleStatus, saleWarning, error: error?.message || String(error) };
       setMessage(`Ciclo interrompido sem retry automático: ${error?.message || String(error)}`, true);
       return false;
     } finally {

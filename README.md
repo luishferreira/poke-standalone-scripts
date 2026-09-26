@@ -20,6 +20,8 @@ Com o repositório público, abra o script desejado e confirme a instalação no
 
 Os painéis do Auto Refill podem ser movidos pelo cabeçalho e redimensionados pelo canto inferior direito. Posição e tamanho são salvos por aba, separadamente para Resumo, Configurações e Itens protegidos. Duplo clique no cabeçalho restaura a posição; no canto, restaura o tamanho.
 
+Se os bloqueios dos itens não forem confirmados, o loot não é vendido, mas o refill tenta comprar com o saldo disponível. O próximo ciclo consulta os bloqueios novamente, sem destrancar os que já estiverem protegidos. Falhas na venda também não impedem a compra; compras continuam sujeitas ao saldo e às regras do jogo.
+
 - [Instalar PokeDream Auto Refill](https://raw.githubusercontent.com/luishferreira/poke-standalone-scripts/master/pokedream-auto-refill.user.js)
 
 Os scripts verificam atualizações usando esses mesmos endereços. Uma atualização só é reconhecida pelo Tampermonkey quando o campo `@version` do userscript aumenta.
