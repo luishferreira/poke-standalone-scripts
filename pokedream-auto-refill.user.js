@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PokeDream Auto Refill
 // @namespace    poke-manager
-// @version      2.6.2
+// @version      2.7.1
 // @description  Protege itens, vende o loot restante e repõe balls e potions configuráveis pela fila oficial do jogo.
 // @author       Luis
 // @match        https://pokedream.com.br/*
@@ -849,11 +849,8 @@
   }
 
   function configure(input = {}) {
-    const changesProduct =
-      (input.potionItemId != null && input.potionItemId !== settings.potionItemId) ||
-      (input.ballItemId != null && input.ballItemId !== settings.ballItemId);
-    if (state.enabled && changesProduct) {
-      setMessage('Pause o Auto Refill antes de trocar os produtos gerenciados.', true);
+    if (state.enabled || state.cycleRunning) {
+      setMessage('Pause o Auto Refill antes de alterar as configurações.', true);
       return { ...settings };
     }
     const normalized = normalizeSettings({ ...settings, ...input });
@@ -889,6 +886,7 @@
   }
 
   function addProtectedItem(itemId) {
+    if (state.enabled || state.cycleRunning) return false;
     if (typeof itemId !== 'string') return false;
     const normalized = itemId.trim();
     if (!state.itemCatalog?.[normalized]) return false;
@@ -897,12 +895,14 @@
   }
 
   function removeProtectedItem(itemId) {
+    if (state.enabled || state.cycleRunning) return false;
     if (typeof itemId !== 'string') return false;
     configure({ protectedItemIds: settings.protectedItemIds.filter((id) => id !== itemId) });
     return true;
   }
 
   function applyProtectionPreset(itemIds, label) {
+    if (state.enabled || state.cycleRunning) return false;
     if (!state.itemCatalog || itemIds.length === 0) return false;
     const validIds = itemIds.filter((itemId) => state.itemCatalog[itemId]);
     if (validIds.length === 0) return false;
@@ -1012,7 +1012,8 @@
       #pdr-auto-refill-button.pdr-busy::after { background:#f59e0b;box-shadow:0 0 7px #f59e0b; }
       #pdr-auto-refill-panel[hidden], #pdr-protection-panel[hidden] { display:none!important; }
       #pdr-auto-refill-panel { position:fixed;right:18px;top:86px;z-index:10050;width:350px;max-width:calc(100vw - 24px);max-height:82vh;overflow:auto;background:#141721;color:#f4f4f5;border:1px solid #596070;border-radius:12px;box-shadow:0 18px 55px rgba(0,0,0,.72);font:13px/1.35 system-ui,sans-serif; }
-      #pdr-protection-panel { position:fixed;right:380px;top:86px;z-index:10051;width:360px;max-width:calc(100vw - 24px);max-height:82vh;overflow:auto;background:#141721;color:#f4f4f5;border:1px solid #596070;border-radius:12px;box-shadow:0 18px 55px rgba(0,0,0,.72);font:13px/1.35 system-ui,sans-serif; }
+      #pdr-auto-refill-panel.pdr-settings-view { width:560px; }
+      #pdr-protection-panel { position:fixed;right:calc(560px + 26px);top:86px;z-index:10051;width:360px;max-width:calc(100vw - 24px);max-height:82vh;overflow:auto;background:#141721;color:#f4f4f5;border:1px solid #596070;border-radius:12px;box-shadow:0 18px 55px rgba(0,0,0,.72);font:13px/1.35 system-ui,sans-serif; }
       #pdr-auto-refill-panel header { display:flex;align-items:center;gap:8px;padding:10px 12px;background:#202532;border-bottom:1px solid #3b4252;color:#facc15;font-weight:800; }
       #pdr-protection-panel header { display:flex;align-items:center;gap:8px;padding:10px 12px;background:#202532;border-bottom:1px solid #3b4252;color:#facc15;font-weight:800; }
       #pdr-auto-refill-panel header span { flex:1; }
@@ -1024,6 +1025,19 @@
       #pdr-auto-refill-panel .pdr-close { width:28px;height:28px;padding:0;color:#fecaca;background:#51252c;border-color:#85404b;font-size:17px; }
       #pdr-protection-panel .pdr-close { width:28px;height:28px;padding:0;color:#fecaca;background:#51252c;border-color:#85404b;font-size:17px; }
       #pdr-auto-refill-panel .pdr-body { padding:11px; }
+      #pdr-auto-refill-panel .pdr-view[hidden] { display:none!important; }
+      #pdr-auto-refill-panel .pdr-settings-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px; }
+      #pdr-auto-refill-panel .pdr-settings-grid fieldset { margin:0;min-width:0; }
+      #pdr-auto-refill-panel .pdr-settings-wide { grid-column:1/-1; }
+      #pdr-auto-refill-panel .pdr-settings-grid label:not(.pdr-check) { grid-template-columns:1fr;gap:3px; }
+      #pdr-auto-refill-panel .pdr-back { padding:4px 8px;font-size:12px; }
+      #pdr-auto-refill-panel .pdr-plan { padding:8px 10px;margin:7px 0;border:1px solid #343c4c;border-radius:8px;background:#191e29; }
+      #pdr-auto-refill-panel .pdr-plan strong { color:#fde047; }
+      #pdr-auto-refill-panel .pdr-plan span { display:block;margin-top:3px;color:#cbd5e1;font-size:12px; }
+      #pdr-auto-refill-panel .pdr-plan.pdr-off { opacity:.6; }
+      #pdr-auto-refill-panel .pdr-overview { color:#aab2c0;font-size:11px;line-height:1.5;margin:9px 0; }
+      #pdr-auto-refill-panel .pdr-configure { width:100%;margin:8px 0 3px; }
+      #pdr-auto-refill-panel input:disabled, #pdr-auto-refill-panel select:disabled, #pdr-protection-panel input:disabled { opacity:.55;cursor:not-allowed; }
       #pdr-protection-panel .pdr-body { padding:11px; }
       #pdr-auto-refill-panel .pdr-status { margin-bottom:9px;padding:8px;border-radius:7px;background:#0c1018;color:#bfdbfe;text-align:center;font-weight:700; }
       #pdr-auto-refill-panel .pdr-status.pdr-error { color:#fecaca; }
@@ -1037,7 +1051,6 @@
       #pdr-auto-refill-panel input, #pdr-auto-refill-panel select { min-width:0;background:#0c1018;border:1px solid #4b5563;border-radius:6px;color:#fff;padding:6px; }
       #pdr-auto-refill-panel .pdr-check { display:flex;gap:7px; }
       #pdr-auto-refill-panel .pdr-check input { min-width:auto; }
-      #pdr-auto-refill-panel .pdr-arm { color:#aab2c0;font-size:11px; }
       #pdr-auto-refill-panel .pdr-note { margin:8px 0;color:#aab2c0;font-size:11px; }
       #pdr-auto-refill-panel .pdr-protection-open { width:100%;margin-top:7px; }
       #pdr-protection-panel input { min-width:0;background:#0c1018;border:1px solid #4b5563;border-radius:6px;color:#fff;padding:6px; }
@@ -1065,10 +1078,11 @@
       #pdr-protection-panel .pdr-protected-item.pdr-official small { background:#22543d;color:#bbf7d0; }
       #pdr-protection-panel .pdr-protected-item button { padding:0;width:18px;height:18px;border:0;background:transparent;color:#fca5a5;line-height:1; }
       #pdr-auto-refill-panel .pdr-lock-summary { margin-top:6px;color:#aab2c0;font-size:11px; }
-      #pdr-auto-refill-panel .pdr-actions { display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:9px; }
+      #pdr-auto-refill-panel .pdr-actions { display:grid;grid-template-columns:1fr;gap:7px;margin-top:9px; }
       #pdr-auto-refill-panel .pdr-toggle { background:#17643f;border-color:#2f9e68; }
       #pdr-auto-refill-panel .pdr-toggle.pdr-stop { background:#71332f;border-color:#a84c45; }
-      @media (max-width:780px) { #pdr-auto-refill-panel, #pdr-protection-panel { right:8px;top:64px;width:calc(100vw - 16px); } #pdr-protection-panel { z-index:10052; } }
+      @media (max-width:980px) { #pdr-protection-panel { right:18px;z-index:10052; } }
+      @media (max-width:600px) { #pdr-auto-refill-panel, #pdr-protection-panel { right:8px;top:64px;width:calc(100vw - 16px); } #pdr-auto-refill-panel .pdr-settings-grid { grid-template-columns:1fr; } }
     `;
     (document.head || document.documentElement)?.appendChild(style);
   }
@@ -1084,6 +1098,11 @@
     panel.id = 'pdr-auto-refill-panel';
     panel.hidden = true;
     const header = document.createElement('header');
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'pdr-back';
+    back.textContent = '← Voltar';
+    back.hidden = true;
     const title = document.createElement('span');
     title.textContent = 'Auto Refill';
     const close = document.createElement('button');
@@ -1096,7 +1115,7 @@
       const protectionPanel = document.querySelector('#pdr-protection-panel');
       if (protectionPanel) protectionPanel.hidden = true;
     });
-    header.append(title, close);
+    header.append(back, title, close);
 
     const body = document.createElement('div');
     body.className = 'pdr-body';
@@ -1120,6 +1139,29 @@
       card.append(small, value);
       summary.appendChild(card);
     }
+    const summaryView = document.createElement('div');
+    summaryView.className = 'pdr-view';
+    summaryView.dataset.pdrView = 'summary';
+    const settingsView = document.createElement('div');
+    settingsView.className = 'pdr-view';
+    settingsView.dataset.pdrView = 'settings';
+    settingsView.hidden = true;
+    const settingsGrid = document.createElement('div');
+    settingsGrid.className = 'pdr-settings-grid';
+    const potionPlan = document.createElement('div');
+    potionPlan.className = 'pdr-plan';
+    potionPlan.dataset.pdr = 'potion-plan';
+    const ballPlan = document.createElement('div');
+    ballPlan.className = 'pdr-plan';
+    ballPlan.dataset.pdr = 'ball-plan';
+    const overview = document.createElement('div');
+    overview.className = 'pdr-overview';
+    overview.dataset.pdr = 'overview';
+    const configureButton = document.createElement('button');
+    configureButton.type = 'button';
+    configureButton.className = 'pdr-configure';
+    configureButton.textContent = 'Configurações';
+    summaryView.append(summary, potionPlan, ballPlan, overview, configureButton);
 
     const potionFieldset = document.createElement('fieldset');
     const potionLegend = document.createElement('legend');
@@ -1132,11 +1174,6 @@
       createNumberField({ id: 'pdr-potion-threshold', label: 'Comprar em ≤', value: settings.potionThreshold }),
       createNumberField({ id: 'pdr-potion-quantity', label: 'Quantidade', value: settings.potionQuantity, min: 1, max: MAX_QUANTITY_PER_ACTION }),
     );
-    const potionArm = document.createElement('div');
-    potionArm.className = 'pdr-arm';
-    potionArm.dataset.pdr = 'potion-arm';
-    potionFieldset.appendChild(potionArm);
-
     const ballFieldset = document.createElement('fieldset');
     const ballLegend = document.createElement('legend');
     ballLegend.textContent = 'Poké Ball';
@@ -1148,11 +1185,6 @@
       createNumberField({ id: 'pdr-ball-threshold', label: 'Comprar em ≤', value: settings.ballThreshold }),
       createNumberField({ id: 'pdr-ball-quantity', label: 'Quantidade', value: settings.ballQuantity, min: 1, max: MAX_QUANTITY_PER_ACTION }),
     );
-    const ballArm = document.createElement('div');
-    ballArm.className = 'pdr-arm';
-    ballArm.dataset.pdr = 'ball-arm';
-    ballFieldset.appendChild(ballArm);
-
     const sellField = createCheckField({
       id: 'pdr-sell-loot',
       label: 'Vender todo loot antes das compras',
@@ -1160,10 +1192,11 @@
     });
     const resumeField = createCheckField({
       id: 'pdr-auto-resume',
-      label: 'Retomar após recarregar esta aba',
+      label: 'Reconectar automaticamente quando cair',
       checked: settings.autoResume,
     });
     const protectionFieldset = document.createElement('fieldset');
+    protectionFieldset.className = 'pdr-settings-wide';
     const protectionLegend = document.createElement('legend');
     protectionLegend.textContent = 'Proteção da mochila';
     const lockSummary = document.createElement('div');
@@ -1257,11 +1290,20 @@
     protectionPanel.append(protectionHeader, protectionBody);
     openProtectionButton.addEventListener('click', () => {
       protectionPanel.hidden = !protectionPanel.hidden;
-      if (!protectionPanel.hidden) protectionInput.focus();
+      if (!protectionPanel.hidden && !state.enabled && !state.cycleRunning) protectionInput.focus();
     });
-    const note = document.createElement('p');
-    note.className = 'pdr-note';
-    note.textContent = 'O ciclo usa a mesma fila oficial da interface do jogo. Fechar este painel não pausa; o ponto verde no menu indica que está ativo.';
+    const setPanelView = (view) => {
+      const showSettings = view === 'settings';
+      summaryView.hidden = showSettings;
+      settingsView.hidden = !showSettings;
+      panel.classList.toggle('pdr-settings-view', showSettings);
+      back.hidden = !showSettings;
+      title.textContent = showSettings ? 'Configurações' : 'Auto Refill';
+      if (!showSettings) protectionPanel.hidden = true;
+      renderPanel();
+    };
+    configureButton.addEventListener('click', () => setPanelView('settings'));
+    back.addEventListener('click', () => setPanelView('summary'));
     const actions = document.createElement('div');
     actions.className = 'pdr-actions';
     const toggle = document.createElement('button');
@@ -1271,15 +1313,18 @@
       if (state.enabled) return void stop();
       start({ confirmed: true });
     });
-    const rearmButton = document.createElement('button');
-    rearmButton.type = 'button';
-    rearmButton.className = 'pdr-rearm';
-    rearmButton.textContent = 'Rearmar';
-    rearmButton.addEventListener('click', () => rearm('all'));
-    actions.append(toggle, rearmButton);
-    body.append(status, summary, potionFieldset, ballFieldset, sellField, protectionFieldset, resumeField, note, actions);
+    actions.append(toggle);
+    const economyFieldset = document.createElement('fieldset');
+    economyFieldset.className = 'pdr-settings-wide';
+    const economyLegend = document.createElement('legend');
+    economyLegend.textContent = 'Economia e continuidade';
+    economyFieldset.append(economyLegend, sellField, resumeField);
+    settingsGrid.append(potionFieldset, ballFieldset, economyFieldset, protectionFieldset);
+    settingsView.append(settingsGrid);
+    body.append(status, summaryView, settingsView, actions);
     panel.append(header, body);
     document.body.append(panel, protectionPanel);
+    panel.setPanelView = setPanelView;
 
     const bind = (selector, event, handler) => {
       panel.querySelector(selector)?.addEventListener(event, handler);
@@ -1358,7 +1403,7 @@
         if (panel.hidden) {
           const protectionPanel = document.querySelector('#pdr-protection-panel');
           if (protectionPanel) protectionPanel.hidden = true;
-        }
+        } else panel.setPanelView?.('summary');
       }
     });
     const botButton = toolbar.querySelector('button.toolbar-btn[aria-label="Bot"]');
@@ -1395,7 +1440,8 @@
 
     const applyButton = protectionPanel.querySelector(`[data-pdr="${prefix}-preset-apply"]`);
     if (applyButton) {
-      applyButton.disabled = presetIds.length === 0 || selectedCount === presetIds.length;
+      applyButton.disabled = state.enabled || state.cycleRunning ||
+        presetIds.length === 0 || selectedCount === presetIds.length;
       applyButton.textContent = presetIds.length === 0
         ? 'Aguardando lista'
         : (selectedCount === presetIds.length ? 'Todos adicionados' : 'Adicionar todos');
@@ -1406,8 +1452,9 @@
     const list = protectionPanel.querySelector(`[data-pdr="${prefix}-preset-list"]`);
     if (!list) return;
     if (presetIds.length === 0) list.hidden = true;
+    const editingLocked = state.enabled || state.cycleRunning;
     const listKey = presetIds.map((itemId) => `${itemId}:${state.itemCatalog?.[itemId]?.name || ''}:` +
-      `${selectedIds.has(itemId)}:${officialIds.has(itemId)}`).join('|');
+      `${selectedIds.has(itemId)}:${officialIds.has(itemId)}:${editingLocked}`).join('|');
     if (list.dataset.listKey === listKey) return;
     list.replaceChildren(...presetIds.map((itemId) => {
       const row = document.createElement('label');
@@ -1415,6 +1462,7 @@
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = selectedIds.has(itemId);
+      checkbox.disabled = editingLocked;
       checkbox.addEventListener('change', () => {
         if (checkbox.checked) addProtectedItem(itemId);
         else removeProtectedItem(itemId);
@@ -1457,9 +1505,10 @@
     const groupedPresetIds = new Set([...stonePresetItemIds, ...SHINY_PRESET_ITEM_IDS]);
     const allVisibleIds = [...new Set([...officialIds, ...selectedIds])];
     const visibleIds = allVisibleIds.filter((itemId) => !groupedPresetIds.has(itemId));
+    const editingLocked = state.enabled || state.cycleRunning;
     const listKey = visibleIds
       .map((itemId) => `${itemId}:${state.itemCatalog?.[itemId]?.name || ''}:` +
-        `${officialIds.has(itemId)}:${selectedIds.has(itemId)}`)
+        `${officialIds.has(itemId)}:${selectedIds.has(itemId)}:${editingLocked}`)
       .join('|');
     if (list && list.dataset.listKey !== listKey) {
       list.replaceChildren(...visibleIds.map((itemId) => {
@@ -1479,6 +1528,7 @@
           const remove = document.createElement('button');
           remove.type = 'button';
           remove.textContent = '×';
+          remove.disabled = editingLocked;
           remove.setAttribute('aria-label', `Remover ${label.textContent} das proteções futuras`);
           remove.title = isOfficial
             ? 'Remove apenas da configuração do script; o bloqueio atual do jogo será preservado.'
@@ -1503,6 +1553,10 @@
     const openButton = panel.querySelector('[data-pdr="protection-open"]');
     const openLabel = `Configurar itens protegidos (${allVisibleIds.length})`;
     if (openButton && openButton.textContent !== openLabel) openButton.textContent = openLabel;
+    const protectionInput = protectionPanel?.querySelector('#pdr-protected-item-input');
+    if (protectionInput) protectionInput.disabled = editingLocked;
+    const addButton = protectionPanel?.querySelector('.pdr-protection-search button');
+    if (addButton) addButton.disabled = editingLocked;
   }
 
   function renderManagedProductControls(panel) {
@@ -1557,19 +1611,38 @@
     write('potion-stock', formatNumber(state.potionStock));
     write('ball-stock', formatNumber(state.ballStock));
     write('gold', formatNumber(state.gold));
-    write('potion-arm', state.potionArmed ? 'Armado' : 'Aguardando rearme');
-    write('ball-arm', state.ballArmed ? 'Armado' : 'Aguardando rearme');
     panel.querySelector('.pdr-status')?.classList.toggle('pdr-error', state.lastError);
     renderManagedProductControls(panel);
     renderProtectionControls(panel);
+    const potionName = state.itemCatalog?.[settings.potionItemId]?.name || settings.potionItemId;
+    const ballName = state.itemCatalog?.[settings.ballItemId]?.name || settings.ballItemId;
+    const renderPlan = (key, enabled, name, quantity, threshold, armed) => {
+      const element = panel.querySelector(`[data-pdr="${key}"]`);
+      if (!element) return;
+      const title = element.querySelector('strong') || document.createElement('strong');
+      const detail = element.querySelector('span') || document.createElement('span');
+      title.textContent = name;
+      detail.textContent = enabled
+        ? `Comprar ${formatNumber(quantity)} quando estoque ≤ ${formatNumber(threshold)} · ${armed ? 'Armado' : 'Aguardando nova ativação'}`
+        : 'Reposição desativada';
+      if (!title.isConnected) element.append(title, detail);
+      element.classList.toggle('pdr-off', !enabled);
+    };
+    renderPlan('potion-plan', settings.potionEnabled, potionName, settings.potionQuantity, settings.potionThreshold, state.potionArmed);
+    renderPlan('ball-plan', settings.ballEnabled, ballName, settings.ballQuantity, settings.ballThreshold, state.ballArmed);
+    write('overview', `Loot: ${settings.sellAllLoot ? 'vender antes das compras' : 'não vender'} · ` +
+      `Itens protegidos: ${settings.protectedItemIds.length} escolhidos · ` +
+      `Auto reconnect: ${settings.autoResume ? 'ativo' : 'desativado'}`);
+    const editingLocked = state.enabled || state.cycleRunning;
+    for (const control of panel.querySelectorAll('.pdr-settings-grid input, .pdr-settings-grid select')) {
+      control.disabled = editingLocked;
+    }
     const toggle = panel.querySelector('.pdr-toggle');
     if (toggle) {
       toggle.textContent = state.enabled ? 'Pausar' : 'Ativar';
       toggle.classList.toggle('pdr-stop', state.enabled);
       toggle.disabled = state.cycleRunning || state.adapterStatus !== 'ready';
     }
-    const rearmButton = panel.querySelector('.pdr-rearm');
-    if (rearmButton) rearmButton.disabled = state.cycleRunning;
     const resumeCheckbox = panel.querySelector('#pdr-auto-resume');
     if (resumeCheckbox) resumeCheckbox.checked = settings.autoResume;
   }

@@ -470,6 +470,27 @@ test('não troca o produto gerenciado enquanto o Auto Refill está ativo', async
   assert.deepEqual(harness.store.getState().actionLog, []);
 });
 
+test('não altera configurações ou proteções enquanto ativo; pausar permite editar', async () => {
+  const harness = createHarness({ potion: 500, ball: 500, bag: { fire_stone: 1 } });
+  await harness.tick(0);
+  harness.api.start({ confirmed: true });
+  const before = harness.api.status().settings;
+  harness.api.configure({ ballThreshold: 999, sellAllLoot: false, autoResume: true });
+  assert.equal(harness.api.applyStonePreset(), false);
+  assert.equal(harness.api.addProtectedItem('fire_stone'), false);
+  assert.equal(harness.api.removeProtectedItem('fire_stone'), false);
+  assert.equal(harness.api.status().settings.ballThreshold, before.ballThreshold);
+  assert.equal(harness.api.status().settings.sellAllLoot, before.sellAllLoot);
+  assert.equal(harness.api.status().settings.autoResume, before.autoResume);
+  assert.deepEqual(Array.from(harness.api.status().settings.protectedItemIds), []);
+
+  harness.api.stop();
+  harness.api.configure({ ballThreshold: 999 });
+  assert.equal(harness.api.applyStonePreset(), true);
+  assert.equal(harness.api.status().settings.ballThreshold, 999);
+  assert.deepEqual(Array.from(harness.api.status().settings.protectedItemIds), ['fire_stone']);
+});
+
 test('potion mantém prioridade quando somente ela cruza o threshold', async () => {
   const harness = createHarness({ potion: 9, ball: 21 });
   await harness.tick(0);
