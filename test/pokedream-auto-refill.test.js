@@ -349,7 +349,7 @@ test('desligar a opção durante a espera cancela a retomada', async () => {
 });
 
 test('ciclo pendente após recarga libera cedo com estoque recuperado', async () => {
-  const first = createHarness({ potion: 10, ball: 20 });
+  const first = createHarness({ potion: 10, ball: 20, applyPurchases: false });
   await first.tick(0);
   first.api.configure({ autoResume: true, sellAllLoot: false });
   first.api.start({ confirmed: true });
@@ -375,7 +375,7 @@ test('ciclo pendente após recarga libera cedo com estoque recuperado', async ()
 });
 
 test('ciclo incerto rearma sozinho após a espera sem duplicar antes dela', async () => {
-  const first = createHarness({ potion: 10, ball: 20 });
+  const first = createHarness({ potion: 10, ball: 20, applyPurchases: false });
   await first.tick(0);
   first.api.configure({ autoResume: true, sellAllLoot: false });
   first.api.start({ confirmed: true });
@@ -500,6 +500,61 @@ test('potion mantém prioridade quando somente ela cruza o threshold', async () 
   const actions = harness.store.getState().actionLog;
   assert.deepEqual(actions.map((action) => action.type), ['sellAllLoot', 'buy']);
   assert.equal(actions[1].payload.itemId, 'small_potion');
+});
+
+test('volta a monitorar após observar a reposição completa no estoque oficial', async () => {
+  const harness = createHarness({ potion: 10, ball: 20 });
+  await harness.tick(0);
+  harness.api.start({ confirmed: true });
+  assert.equal(harness.api.status().lastMessage, 'Auto Refill ativo. Monitorando estoque.');
+  await harness.tick(150);
+  assert.equal(harness.api.status().lastResult.stockConfirmed, true);
+  assert.equal(harness.api.status().lastMessage, 'Auto Refill ativo. Monitorando estoque.');
+  assert.equal(JSON.parse(harness.storage.get('pokedream-auto-refill-runtime-v1')).pendingCycle, null);
+  await harness.tick(30_000);
+  assert.equal(harness.api.status().lastMessage, 'Auto Refill ativo. Monitorando estoque.');
+  assert.equal(harness.store.getState().actionLog.length, 3);
+});
+
+test('confirma cada produto separadamente e não considera reposição parcial como completa', async () => {
+  const harness = createHarness({ potion: 10, ball: 20, applyPurchases: false });
+  await harness.tick(0);
+  harness.api.start({ confirmed: true });
+  await harness.tick(150);
+  assert.match(harness.api.status().lastMessage, /Aguardando atualização do estoque/);
+  harness.store.setStock({ potion: 1_010, ball: 500 });
+  assert.equal(harness.api.status().lastResult.stockConfirmed, false);
+  harness.store.setStock({ potion: 1_009, ball: 1_020 });
+  assert.equal(harness.api.status().lastResult.stockConfirmed, true);
+  assert.equal(harness.api.status().lastMessage, 'Auto Refill ativo. Monitorando estoque.');
+  assert.equal(harness.store.getState().actionLog.length, 3);
+});
+
+test('avisa confirmação pendente sem retry e aceita atualização tardia de estoque', async () => {
+  const harness = createHarness({ potion: 10, ball: 21, applyPurchases: false });
+  await harness.tick(0);
+  harness.api.start({ confirmed: true });
+  await harness.tick(30_150);
+  assert.match(harness.api.status().lastMessage, /estoque ainda não confirmou/);
+  assert.equal(harness.api.status().lastResult.stockConfirmed, false);
+  assert.equal(harness.store.getState().actionLog.length, 2);
+  harness.store.setStock({ potion: 1_010 });
+  assert.equal(harness.api.status().lastResult.stockConfirmed, true);
+  assert.equal(harness.api.status().lastMessage, 'Auto Refill ativo. Monitorando estoque.');
+  assert.equal(harness.store.getState().actionLog.length, 2);
+});
+
+test('pausar cancela o aviso de confirmação e não é sobrescrito por estoque tardio', async () => {
+  const harness = createHarness({ potion: 10, ball: 21, applyPurchases: false });
+  await harness.tick(0);
+  harness.api.start({ confirmed: true });
+  await harness.tick(150);
+  harness.api.stop();
+  harness.store.setStock({ potion: 1_010 });
+  await harness.tick(30_000);
+  assert.equal(harness.api.status().lastMessage, 'Auto Refill pausado.');
+  assert.equal(harness.api.status().enabled, false);
+  assert.equal(harness.store.getState().actionLog.length, 2);
 });
 
 test('estoque baixo não repete enquanto a categoria permanece desarmada', async () => {

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PokeDream Auto Refill
 // @namespace    poke-manager
-// @version      2.8.0
+// @version      2.8.1
 // @description  Protege itens, vende o loot restante e repõe balls e potions configuráveis pela fila oficial do jogo.
 // @author       Luis
 // @match        https://pokedream.com.br/*
@@ -25,6 +25,7 @@
 
   const SETTINGS_KEY = 'pokedream-auto-refill-settings-v2';
   const RUNTIME_KEY = 'pokedream-auto-refill-runtime-v1';
+  const PURCHASE_CONFIRMATION_TIMEOUT_MS = 30_000;
   const panelInteraction = window.pokeScripts.panelInteraction;
   let disposePanelInteraction = null;
   let disposeProtectionInteraction = null;
@@ -508,6 +509,8 @@
     lastMessage: 'Carregando adaptador do jogo...',
     lastError: false,
     lastResult: null,
+    purchaseConfirmation: null,
+    purchaseConfirmationTimer: null,
   };
   let interfaceObserver = null;
 
@@ -541,6 +544,40 @@
     renderPanel();
   }
 
+  function clearPurchaseConfirmation() {
+    if (state.purchaseConfirmationTimer) clearTimeout(state.purchaseConfirmationTimer);
+    state.purchaseConfirmationTimer = null;
+    state.purchaseConfirmation = null;
+  }
+
+  function observePurchaseConfirmation(snapshot) {
+    const pending = state.purchaseConfirmation;
+    if (!pending || state.cycleRunning || !state.lastResult?.accepted) return;
+    for (const item of pending.items) {
+      if (normalizeNonNegativeInteger(snapshot.bag[item.itemId], 0) >= item.target) item.observed = true;
+    }
+    if (!pending.items.every((item) => item.observed)) return;
+    state.lastResult.stockConfirmed = true;
+    clearPurchaseConfirmation();
+    runtime.pendingCycle = null;
+    saveRuntime();
+    if (state.enabled) setMessage('Auto Refill ativo. Monitorando estoque.');
+  }
+
+  function watchPurchaseConfirmation(items) {
+    clearPurchaseConfirmation();
+    const pending = { items };
+    state.purchaseConfirmation = pending;
+    state.purchaseConfirmationTimer = setTimeout(() => {
+      state.purchaseConfirmationTimer = null;
+      if (state.purchaseConfirmation !== pending) return;
+      syncGameState();
+      if (state.purchaseConfirmation === pending && state.enabled) {
+        setMessage('Compra enviada, mas o estoque ainda não confirmou toda a reposição. Sem nova tentativa automática.', true);
+      }
+    }, PURCHASE_CONFIRMATION_TIMEOUT_MS);
+  }
+
   function syncGameState() {
     if (!state.installed || !state.gameStore) return;
     let gameState;
@@ -550,6 +587,7 @@
       state.adapterStatus = 'incompatible';
       state.adapterError = error?.message || String(error);
       state.enabled = false;
+      clearPurchaseConfirmation();
       runtime.resumeWanted = false;
       saveRuntime();
       setMessage('O adaptador perdeu acesso ao estado do jogo. Auto Refill pausado.', true);
@@ -568,6 +606,7 @@
     state.ballStock = snapshot.ballStock;
     state.gold = snapshot.gold;
     state.bagLocks = [...snapshot.bagLocks];
+    observePurchaseConfirmation(snapshot);
     if (state.resumeHold && runtime.pendingCycle &&
         (!runtime.pendingCycle.potion || state.potionStock > settings.potionThreshold) &&
         (!runtime.pendingCycle.ball || state.ballStock > settings.ballThreshold)) {
@@ -780,6 +819,7 @@
     runtime.pendingCycle = { potion: needsPotion, ball: needsBall, startedAt: Date.now() };
     saveRuntime();
     state.cycleRunning = true;
+    clearPurchaseConfirmation();
     state.lastResult = null;
     setMessage('Adicionando o refill à fila oficial do jogo...');
     let cycleSucceeded = false;
@@ -796,6 +836,12 @@
           throw new Error('Os bloqueios não foram confirmados pelo estado oficial; a venda foi cancelada.');
         }
       }
+      const beforePurchase = parseGameSnapshot(state.gameStore.getState(), settings);
+      if (!beforePurchase) throw new Error('O inventário ficou indisponível antes da compra.');
+      const expectedItems = [
+        ...(needsPotion ? [{ itemId: settings.potionItemId, target: beforePurchase.potionStock + settings.potionQuantity, observed: false }] : []),
+        ...(needsBall ? [{ itemId: settings.ballItemId, target: beforePurchase.ballStock + settings.ballQuantity, observed: false }] : []),
+      ];
       const refillActions = queueRefillActions(state.gameStore, {
         sellAllLoot: settings.sellAllLoot,
         needsPotion,
@@ -813,10 +859,12 @@
       }
       state.lastResult = {
         accepted: true,
+        stockConfirmed: false,
         queued: queued.map(({ seq, step, type }) => ({ seq, step, type })),
       };
       cycleSucceeded = true;
-      setMessage(`${queued.length} actions adicionadas à fila oficial do jogo.`);
+      watchPurchaseConfirmation(expectedItems);
+      setMessage('Compra enviada. Aguardando atualização do estoque...');
       return true;
     } catch (error) {
       state.lastResult = { accepted: false, error: error?.message || String(error) };
@@ -834,6 +882,7 @@
   }
 
   function rearm(category = 'all') {
+    clearPurchaseConfirmation();
     if (state.resumeHold) {
       state.resumeHold = false;
     }
@@ -926,6 +975,7 @@
       return false;
     }
     state.enabled = true;
+    clearPurchaseConfirmation();
     state.resumePending = false;
     state.resumeHold = false;
     if (state.resumeHoldTimer) clearTimeout(state.resumeHoldTimer);
@@ -937,13 +987,14 @@
     saveRuntime();
     state.potionArmed = true;
     state.ballArmed = true;
-    setMessage('Auto Refill ativo. Observando o store oficial do jogo.');
+    setMessage('Auto Refill ativo. Monitorando estoque.');
     syncGameState();
     scheduleRefillCheck();
     return true;
   }
 
   function stop() {
+    clearPurchaseConfirmation();
     state.enabled = false;
     state.resumePending = false;
     state.resumeHold = false;
