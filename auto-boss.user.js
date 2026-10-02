@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Auto Boss Farmer PIW
-// @version      1.6.4
+// @version      1.6.5
 // @description  Painel para farmar Bosses com HUD, cura entre lutas e parada agendada.
 // @author       Luis
 // @match        https://poke.idleworld.online/play
@@ -906,7 +906,8 @@
     const TRANSITION_DELAY_MS = 1500;
     const WATCHDOG_SILENCE_MS = 45000;
     const WATCHDOG_CHECK_MS = 5000;
-    const BOSS_DOM_TIMEOUT_MS = 5000;
+    const BOSS_DOM_TIMEOUT_MS = 10000;
+    const TOWN_RETURN_GRACE_MS = 1000;
     const HUNT_ENTRY_TIMEOUT_MS = 4000;
     const DOM_RETRY_MS = 100;
     const BOSS_NAMES = ['Giant Cruel', 'Ancient Aero'];
@@ -1094,8 +1095,12 @@
     async function locateBossChallenge(bossName, generation) {
         if (document.querySelector('.bvic-window')) throw new Error('Há uma recompensa pendente. Confirme-a no jogo antes de iniciar.');
         if (!isElementVisible(document.querySelector('.boss-window:not(.bvic-window)'))) {
-            const bossesButton = document.querySelector('button[data-guide="dock-bosses"]');
-            if (!bossesButton || bossesButton.disabled) throw new Error('Botão Bosses indisponível.');
+            const bossesButton = await waitForDom(() => {
+                const button = document.querySelector('button[data-guide="dock-bosses"]');
+                return button && !button.disabled ? button : null;
+            }, BOSS_DOM_TIMEOUT_MS, generation);
+            if (generation !== transitionGeneration) return null;
+            if (!bossesButton) throw new Error('Botão Bosses indisponível.');
             bossesButton.click();
             const opened = await waitForDom(() => {
                 const candidate = document.querySelector('.boss-window:not(.bvic-window)');
@@ -1111,14 +1116,17 @@
         const boss = await waitForDom(() => {
             const bossWindow = document.querySelector('.boss-window:not(.bvic-window)');
             return Array.from(bossWindow?.querySelectorAll('button.boss-litem') || [])
-                .find(item => normalizeBossName(item.querySelector('.boss-lname')?.textContent) === bossName);
+                .find(item => normalizeBossName(item.querySelector('.boss-lname')?.textContent) === bossName
+                    && !item.disabled && !item.matches('.soon'));
         }, BOSS_DOM_TIMEOUT_MS, generation);
         if (!boss || !state.running || generation !== transitionGeneration) return null;
-        if (boss.disabled || boss.matches('.soon')) throw new Error(`${bossName} está indisponível.`);
         boss.click();
 
         // A lista só seleciona o boss. Confira o detalhe antes do clique que consome a entrada.
-        return waitForDom(() => getSelectedBossChallenge(bossName), BOSS_DOM_TIMEOUT_MS, generation);
+        return waitForDom(() => {
+            const challenge = getSelectedBossChallenge(bossName);
+            return challenge && !challenge.disabled ? challenge : null;
+        }, BOSS_DOM_TIMEOUT_MS, generation);
     }
 
     function waitForHuntEntry(bossName, generation) {
@@ -1265,6 +1273,29 @@
         });
     }
 
+    function getTownConversation() {
+        // Não use geometria/viewport: os NPCs podem estar fora da área visível.
+        return Array.from(document.querySelectorAll('button.npc-plate-btn'))
+            .find(button => button.textContent.trim() === 'Conversar' && !button.disabled);
+    }
+
+    async function awaitTownConversation(generation) {
+        let talk = await waitForDom(getTownConversation, TOWN_RETURN_GRACE_MS, generation);
+        if (generation !== transitionGeneration || talk) return talk;
+        // OK fecha a recompensa; nem toda sessão já retornou à cidade nesse momento.
+        const home = await waitForDom(() => {
+            const button = document.querySelector('button[data-guide="dock-home"]');
+            return button && !button.disabled ? button : null;
+        }, BOSS_DOM_TIMEOUT_MS, generation);
+        if (generation !== transitionGeneration) return null;
+        if (!home) throw new Error('Voltar para Cerulean está indisponível.');
+        // A conversa pode ter aparecido enquanto aguardávamos o botão de retorno.
+        talk = getTownConversation();
+        if (talk) return talk;
+        home.click();
+        return waitForDom(getTownConversation, BOSS_DOM_TIMEOUT_MS, generation);
+    }
+
     function completeOutcome(won) {
         isTransitioning = false;
         if (won && state.running && !state.stopping) {
@@ -1295,8 +1326,7 @@
             // Nesta captura, o primeiro Conversar abriu Nurse Joy. Nunca cure sem confirmar o nome.
             let dialog = document.querySelector('.npc-dialog');
             if (!dialog) {
-                const talk = await waitForDom(() => Array.from(document.querySelectorAll('button.npc-plate-btn'))
-                    .find(button => button.textContent.trim() === 'Conversar'), BOSS_DOM_TIMEOUT_MS, generation);
+                const talk = await awaitTownConversation(generation);
                 if (generation !== transitionGeneration) return;
                 if (!talk || talk.disabled) throw new Error('Conversa da Nurse Joy indisponível em Cerulean.');
                 talk.click();

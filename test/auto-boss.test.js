@@ -28,6 +28,11 @@ function createHarness(savedState = { useWebSocket: true }, {
     npcName = 'Nurse Joy',
     healConfirmed = true,
     healClosesDialog = true,
+    rowReadyDelayMs = 0,
+    challengeReadyDelayMs = 0,
+    homeRequired = false,
+    homeAvailable = true,
+    townReadyDelayMs = 0,
 } = {}) {
     let now = 0;
     let nextTimerId = 1;
@@ -40,6 +45,9 @@ function createHarness(savedState = { useWebSocket: true }, {
     let victoryOpen = pendingVictory;
     let dialogOpen = false;
     let healed = true;
+    let townReady = !homeRequired;
+    let windowOpenedAt = 0;
+    let challengeReadyAt = 0;
     const clicks = [];
     const clickedSlugs = [];
     if (savedState) storage.set('piw_boss_farm_v1', JSON.stringify(savedState));
@@ -98,9 +106,11 @@ function createHarness(savedState = { useWebSocket: true }, {
     };
 
     // Seletores/nome/classes vêm do HTML da janela Bosses fornecido pelo usuário.
-    const bossesButton = { click() { clicks.push('Bosses'); bossWindowOpen = true; } };
+    const bossesButton = { click() {
+        clicks.push('Bosses'); bossWindowOpen = true; windowOpenedAt = now;
+    } };
     const challenge = {
-        disabled: challengeDisabled,
+        get disabled() { return challengeDisabled || now < challengeReadyAt; },
         click() {
             if (challengeThrows) throw new Error('Desafio indisponível');
             clicks.push('Challenge Boss');
@@ -115,11 +125,12 @@ function createHarness(savedState = { useWebSocket: true }, {
         },
         matches(selector) {
             if (selector === '.on') return selectedBoss === name;
-            if (selector === '.soon') return bossSoon && name === 'Giant Cruel';
+            if (selector === '.soon') return (bossSoon && name === 'Giant Cruel') || now < windowOpenedAt + rowReadyDelayMs;
             return false;
         },
         click() {
             clicks.push(name);
+            challengeReadyAt = now + challengeReadyDelayMs;
             if (selectionDelayMs) setTimer(() => { selectedBoss = name; }, selectionDelayMs, 0);
             else selectedBoss = name;
         },
@@ -143,7 +154,13 @@ function createHarness(savedState = { useWebSocket: true }, {
     const victoryWindow = {
         querySelector(selector) {
             if (selector === '.bvic-desc b') return { textContent: victoryBossName };
-            if (selector === 'button.bvic-ok') return { click() { clicks.push('OK'); victoryOpen = false; } };
+            if (selector === 'button.bvic-ok') return { click() {
+                clicks.push('OK'); victoryOpen = false;
+                if (!homeRequired && townReadyDelayMs) {
+                    townReady = false;
+                    setTimer(() => { townReady = true; }, townReadyDelayMs, 0);
+                }
+            } };
             return null;
         },
         querySelectorAll() { return []; },
@@ -177,6 +194,11 @@ function createHarness(savedState = { useWebSocket: true }, {
             createElement() { throw new Error('DOM não deve ser criado neste teste'); },
             querySelector(selector) {
                 if (selector === 'button[data-guide="dock-bosses"]') return bossesButtonAvailable ? bossesButton : null;
+                if (selector === 'button[data-guide="dock-home"]' && homeAvailable) return { click() {
+                    clicks.push('Voltar para Cerulean');
+                    if (townReadyDelayMs) setTimer(() => { townReady = true; }, townReadyDelayMs, 0);
+                    else townReady = true;
+                } };
                 if (selector === '.boss-window:not(.bvic-window)') return bossWindowOpen ? bossWindow : null;
                 if (selector === '.bvic-window') return victoryOpen ? victoryWindow : null;
                 if (selector === '.npc-dialog') return dialogOpen ? joyDialog : null;
@@ -185,7 +207,7 @@ function createHarness(savedState = { useWebSocket: true }, {
                 return null;
             },
             querySelectorAll(selector) {
-                if (selector === 'button.npc-plate-btn' && joyAvailable) return [{
+                if (selector === 'button.npc-plate-btn' && joyAvailable && townReady) return [{
                     textContent: 'Conversar', click() { clicks.push('Conversar'); dialogOpen = true; },
                 }];
                 if (selector === '.phud-mon') return [{ querySelector() {
@@ -780,7 +802,7 @@ test('recompensa já aberta bloqueia entrada e janela de outro boss não é acei
     harness.api.start();
     await harness.settle();
     socket.emit('message', { type: 'field', bossOutcome: 'won' });
-    await harness.tickAsync(6000);
+    await harness.tickAsync(11000);
     assert.equal(harness.api.status().running, false);
     assert.equal(harness.clicks.includes('OK'), false);
     assert.deepEqual(sentTypes(socket), ['enter-hunt']);
@@ -837,4 +859,78 @@ test('desconexão, substituição ou uninstall cancelam espera de recompensa sem
         assert.equal(harness.clicks.includes('OK'), false);
         assert.deepEqual(sentTypes(socket), ['enter-hunt']);
     }
+});
+
+test('primeira entrada aguarda lista e desafio carregarem sem exigir segundo início', async () => {
+    const harness = createHarness(null, { rowReadyDelayMs: 700, challengeReadyDelayMs: 1200 });
+    const socket = harness.captureSocket();
+    harness.api.start();
+    await harness.tickAsync(500);
+    assert.deepEqual(harness.clicks, ['Bosses']);
+    assert.equal(harness.api.status().running, true);
+    await harness.tickAsync(600);
+    assert.deepEqual(harness.clicks, ['Bosses', 'Giant Cruel']);
+    assert.deepEqual(socket.sent, []);
+    await harness.tickAsync(1000);
+    assert.deepEqual(harness.clickedSlugs, ['cruel_boss']);
+    assert.equal(harness.api.status().transitioning, false);
+    assert.equal(harness.api.status().running, true);
+});
+
+test('após OK volta por clique a Cerulean e aguarda NPC renderizar antes de curar', async () => {
+    const harness = createHarness(null, { homeRequired: true, townReadyDelayMs: 3200 });
+    const socket = harness.captureSocket();
+    harness.api.start();
+    await harness.settle();
+    harness.api.stop();
+    socket.emit('message', { type: 'field', bossOutcome: 'won' });
+    await harness.tickAsync(900);
+    assert.deepEqual(harness.clicks.slice(3), ['OK']);
+    await harness.tickAsync(2500);
+    assert.deepEqual(harness.clicks.slice(3), ['OK', 'Voltar para Cerulean']);
+    await harness.tickAsync(1500);
+    assert.deepEqual(harness.clicks.slice(3), ['OK', 'Voltar para Cerulean', 'Conversar', 'Curar equipe']);
+    assert.equal(harness.api.status().running, false);
+    assert.equal(harness.api.status().transitioning, false);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt']);
+});
+
+test('retorno automático com NPC pronto dispensa clique no botão de cidade', async () => {
+    const harness = createHarness(null, { townReadyDelayMs: 500 });
+    const socket = harness.captureSocket();
+    harness.api.start();
+    await harness.settle();
+    harness.api.stop();
+    socket.emit('message', { type: 'field', bossOutcome: 'won' });
+    await harness.tickAsync(2000);
+    assert.deepEqual(harness.clicks.slice(3), ['OK', 'Conversar', 'Curar equipe']);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt']);
+});
+
+test('retorno indisponível pausa sem inventar saída via WebSocket', async () => {
+    const harness = createHarness(null, { homeRequired: true, homeAvailable: false });
+    const socket = harness.captureSocket();
+    harness.api.start();
+    await harness.settle();
+    socket.emit('message', { type: 'field', bossOutcome: 'won' });
+    await harness.tickAsync(12000);
+    assert.equal(harness.api.status().running, false);
+    assert.match(harness.api.status().lastMessage, /Voltar para Cerulean/);
+    assert.deepEqual(harness.clicks.slice(3), ['OK']);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt']);
+});
+
+test('uninstall durante retorno cancela cura e reentrada mesmo quando NPC aparece depois', async () => {
+    const harness = createHarness(null, { homeRequired: true, townReadyDelayMs: 3200 });
+    const socket = harness.captureSocket();
+    harness.api.start();
+    await harness.settle();
+    socket.emit('message', { type: 'field', bossOutcome: 'won' });
+    await harness.tickAsync(1100);
+    harness.api.uninstall();
+    await harness.tickAsync(10000);
+    assert.deepEqual(harness.clicks.slice(3), ['OK', 'Voltar para Cerulean']);
+    assert.equal(harness.api.status().running, false);
+    assert.equal(harness.api.status().transitioning, false);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt']);
 });
