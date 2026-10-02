@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Auto Boss Farmer PIW
-// @version      1.5.2
+// @version      1.6.2
 // @description  Painel para farmar Bosses com HUD, cura entre lutas e parada agendada.
 // @author       Luis
 // @match        https://poke.idleworld.online/play
@@ -32,12 +32,22 @@
     const TRANSITION_DELAY_MS = 1500;
     const WATCHDOG_SILENCE_MS = 45000;
     const WATCHDOG_CHECK_MS = 5000;
+    const BOSS_DOM_TIMEOUT_MS = 1500;
+    const HUNT_ENTRY_TIMEOUT_MS = 4000;
+    const DOM_RETRY_MS = 100;
+    const BOSS_NAMES = ['Giant Cruel', 'Ancient Aero'];
+    // Preserve a entrada padrão já usada pelo Auto Boss. Outros slugs vêm do jogo.
+    const DEFAULT_BOSS_SLUGS = { 'Giant Cruel': 'cruel_boss' };
 
     let state = readState();
     let gameSocket = null;
     let isTransitioning = false;
     let transitionGeneration = 0;
     let transitionTimer = null;
+    let navigationInProgress = false;
+    let navigationResolve = null;
+    let huntEntryWaiter = null;
+    let knownBossSlug = null;
     let lastActivity = Date.now();
     let watchdogTimer = null;
     let interfaceObserver = null;
@@ -49,6 +59,9 @@
     function blankState() {
         return {
             slug: 'cruel_boss',
+            bossName: 'Giant Cruel',
+            bossSlugs: readBossSlugs(),
+            useWebSocket: false,
             wins: 0,
             losses: 0,
             running: false,
@@ -63,16 +76,28 @@
         return Number.isFinite(number) && number >= 0 ? Math.floor(number) : 0;
     }
 
+    function readBossSlugs(saved) {
+        return Object.fromEntries(BOSS_NAMES.map(name => {
+            const slug = saved && typeof saved === 'object' && !Array.isArray(saved) ? saved[name] : null;
+            return [name, typeof slug === 'string' && slug.trim() ? slug : DEFAULT_BOSS_SLUGS[name] || null];
+        }));
+    }
+
     function readState() {
         try {
             const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || 'null');
             if (!saved || typeof saved !== 'object') return blankState();
-            const slug = typeof saved.slug === 'string' ? saved.slug.trim() : '';
+            const bossName = BOSS_NAMES.includes(saved.bossName) ? saved.bossName : 'Giant Cruel';
+            const bossSlugs = readBossSlugs(saved.bossSlugs);
             const lootHistory = Array.isArray(saved.lootHistory)
                 ? saved.lootHistory.filter(item => typeof item === 'string').slice(0, 10)
                 : [];
             return {
-                slug: slug || 'cruel_boss',
+                // O campo livre antigo não vinculava slug ao nome. Não atribua seu valor ao Aero.
+                slug: bossSlugs[bossName],
+                bossName,
+                bossSlugs,
+                useWebSocket: saved.useWebSocket === true,
                 wins: normalizeCount(saved.wins),
                 losses: normalizeCount(saved.losses),
                 running: false,
@@ -91,6 +116,9 @@
         try {
             sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
                 slug: state.slug,
+                bossName: state.bossName,
+                bossSlugs: state.bossSlugs,
+                useWebSocket: state.useWebSocket,
                 wins: state.wins,
                 losses: state.losses,
                 lastMessage: state.lastMessage,
@@ -108,6 +136,11 @@
             transitioning: isTransitioning,
             socketOpen: gameSocket?.readyState === WebSocket.OPEN,
             slug: state.slug,
+            bossName: state.bossName,
+            bossSlugs: { ...state.bossSlugs },
+            webSocketAvailable: Boolean(state.bossSlugs[state.bossName]),
+            useWebSocket: state.useWebSocket,
+            lastMessage: state.lastMessage,
             wins: state.wins,
             losses: state.losses,
             lastActivityAt: lastActivity,
@@ -124,7 +157,145 @@
         transitionGeneration += 1;
         if (transitionTimer) clearTimeout(transitionTimer);
         transitionTimer = null;
+        navigationResolve?.(false);
+        navigationResolve = null;
+        resolveHuntEntry(false);
+        navigationInProgress = false;
         isTransitioning = false;
+    }
+
+    function resolveHuntEntry(confirmed) {
+        const waiter = huntEntryWaiter;
+        if (!waiter) return;
+        clearTimeout(waiter.timer);
+        huntEntryWaiter = null;
+        waiter.resolve(Boolean(confirmed));
+    }
+
+    function waitDuringNavigation(delayMs, generation) {
+        return new Promise(resolve => {
+            navigationResolve = resolve;
+            transitionTimer = setTimeout(() => {
+                transitionTimer = null;
+                navigationResolve = null;
+                resolve(state.running && generation === transitionGeneration);
+            }, delayMs);
+        });
+    }
+
+    async function waitForDom(find, timeoutMs, generation) {
+        const deadline = Date.now() + timeoutMs;
+        while (state.running && generation === transitionGeneration) {
+            const found = find();
+            if (found) return found;
+            if (Date.now() >= deadline) return null;
+            if (!await waitDuringNavigation(DOM_RETRY_MS, generation)) return null;
+        }
+        return null;
+    }
+
+    function normalizeBossName(value) {
+        return String(value || '').replace(/^\s*⚔️?\s*/, '').trim();
+    }
+
+    function isElementVisible(element) {
+        return Boolean(element) && (
+            typeof getComputedStyle !== 'function' || getComputedStyle(element).display !== 'none'
+        );
+    }
+
+    function getSelectedBossChallenge(bossName) {
+        const bossWindow = document.querySelector('.boss-window');
+        const selected = Array.from(bossWindow?.querySelectorAll('button.boss-litem') || [])
+            .find(item => item.matches('.on')
+                && normalizeBossName(item.querySelector('.boss-lname')?.textContent) === bossName);
+        if (!selected || normalizeBossName(bossWindow.querySelector('.boss-hname')?.textContent) !== bossName) return null;
+        const challenge = bossWindow.querySelector('button.boss-challenge');
+        return isElementVisible(challenge) ? challenge : null;
+    }
+
+    async function locateBossChallenge(bossName, generation) {
+        if (!isElementVisible(document.querySelector('.boss-window'))) {
+            const bossesButton = document.querySelector('button[data-guide="dock-bosses"]');
+            if (!bossesButton || bossesButton.disabled) throw new Error('Botão Bosses indisponível.');
+            bossesButton.click();
+            const opened = await waitForDom(() => {
+                const candidate = document.querySelector('.boss-window');
+                return isElementVisible(candidate) ? candidate : null;
+            }, BOSS_DOM_TIMEOUT_MS, generation);
+            if (!opened) return null;
+        }
+
+        const bossesTab = Array.from(document.querySelector('.boss-window')?.querySelectorAll('button.mk-tab') || [])
+            .find(tab => tab.textContent.trim() === 'Bosses');
+        if (bossesTab && !bossesTab.matches('.on')) bossesTab.click();
+
+        const boss = await waitForDom(() => {
+            const bossWindow = document.querySelector('.boss-window');
+            return Array.from(bossWindow?.querySelectorAll('button.boss-litem') || [])
+                .find(item => normalizeBossName(item.querySelector('.boss-lname')?.textContent) === bossName);
+        }, BOSS_DOM_TIMEOUT_MS, generation);
+        if (!boss || !state.running || generation !== transitionGeneration) return null;
+        if (boss.disabled || boss.matches('.soon')) throw new Error(`${bossName} está indisponível.`);
+        boss.click();
+
+        // A lista só seleciona o boss. Confira o detalhe antes do clique que consome a entrada.
+        return waitForDom(() => getSelectedBossChallenge(bossName), BOSS_DOM_TIMEOUT_MS, generation);
+    }
+
+    function waitForHuntEntry(bossName, generation) {
+        resolveHuntEntry(false);
+        return new Promise(resolve => {
+            const timer = setTimeout(() => {
+                if (huntEntryWaiter?.timer !== timer) return;
+                huntEntryWaiter = null;
+                resolve(false);
+            }, HUNT_ENTRY_TIMEOUT_MS);
+            huntEntryWaiter = { bossName, generation, timer, resolve, clicked: false };
+        });
+    }
+
+    async function enterBossThroughWindow(generation) {
+        try {
+            const challenge = await locateBossChallenge(state.bossName, generation);
+            if (!state.running || generation !== transitionGeneration) return;
+            if (!challenge) throw new Error(`Não foi possível preparar o desafio de ${state.bossName} na janela Bosses.`);
+            if (getSelectedBossChallenge(state.bossName) !== challenge) throw new Error('A seleção do boss mudou antes do desafio.');
+            if (challenge.disabled) throw new Error('Challenge Boss está desabilitado. Confira nível, time e Boss Tokens no jogo.');
+            const confirmation = waitForHuntEntry(state.bossName, generation);
+            huntEntryWaiter.clicked = true;
+            challenge.click();
+            const confirmed = await confirmation;
+            if (!state.running || generation !== transitionGeneration) return;
+            if (!confirmed) throw new Error(`O jogo não confirmou a entrada em ${state.bossName}. Não haverá nova tentativa automática.`);
+            navigationInProgress = false;
+            isTransitioning = false;
+            lastActivity = Date.now();
+            setMessage(`⚔️ Luta iniciada pelo botão Challenge Boss: ${state.bossName}`);
+            saveState();
+            renderPanel();
+        } catch (error) {
+            if (generation !== transitionGeneration) return;
+            pauseFarm(`⚠️ ${error?.message || String(error)} Automação pausada.`);
+        }
+    }
+
+    function enterBoss() {
+        if (state.useWebSocket) {
+            if (!sendWs({ type: 'enter-hunt', slug: state.slug })) {
+                pauseFarm('⚠️ Não foi possível enviar enter-hunt. Automação pausada.');
+                return false;
+            }
+            lastActivity = Date.now();
+            setMessage(`⚔️ Luta iniciada via WebSocket em: ${state.slug}`);
+            return true;
+        }
+        isTransitioning = true;
+        navigationInProgress = true;
+        const generation = ++transitionGeneration;
+        setMessage(`Abrindo ${state.bossName} pela janela Bosses...`);
+        void enterBossThroughWindow(generation);
+        return true;
     }
 
     function scheduleTransitionStep(generation, callback) {
@@ -225,12 +396,7 @@
             scheduleTransitionStep(generation, () => {
                 isTransitioning = false;
                 if (state.running && !state.stopping) {
-                    if (!sendWs({ type: 'enter-hunt', slug: state.slug })) {
-                        failOutcomeCleanup('Não foi possível reentrar no Boss.');
-                        return;
-                    }
-                    lastActivity = Date.now();
-                    setMessage(`⚔️ Nova luta iniciada em: ${state.slug}`);
+                    if (!enterBoss()) return;
                 } else {
                     state.running = false;
                     state.stopping = false;
@@ -289,11 +455,28 @@
         },
         incoming(event) {
             handleSocketMessage(event.socket, event.message);
+        },
+        outgoing(event) {
+            const waiter = huntEntryWaiter;
+            if (event.socket !== gameSocket || !waiter) return;
+            if (waiter.generation !== transitionGeneration) return;
+            if (!waiter.clicked || waiter.bossName !== state.bossName) return;
+            if (event.message?.type !== 'enter-hunt' || typeof event.message.slug !== 'string' || !event.message.slug) return;
+            if (knownBossSlug && event.message.slug !== knownBossSlug) {
+                pauseFarm('⚠️ O jogo enviou entrada em outra hunt durante o desafio. Automação pausada.');
+                return;
+            }
+            // O HTML não informa slug: observe o envio do jogo, sem derivar ID do nome do boss.
+            knownBossSlug = event.message.slug;
+            state.slug = event.message.slug;
+            state.bossSlugs[state.bossName] = event.message.slug;
+            resolveHuntEntry(true);
         }
     });
     adoptSocket(bridge.getSocket());
 
     function startFarm() {
+        if (state.running) return false;
         if (isTransitioning) {
             setMessage('Aguarde a finalização da cura atual antes de iniciar novamente.', true);
             return false;
@@ -304,28 +487,28 @@
             return false;
         }
 
-        const slugInput = document.querySelector('#pba-slug');
-        const slug = String(slugInput?.value ?? state.slug).trim();
-        if (!slug) {
-            setMessage('Informe o slug do Boss antes de iniciar.', true);
+        const bossInput = document.querySelector('#pba-boss-name');
+        const bossName = bossInput?.value ?? state.bossName;
+        if (!BOSS_NAMES.includes(bossName)) {
+            setMessage('Selecione um Boss disponível antes de iniciar.', true);
+            renderPanel();
+            return false;
+        }
+        const slug = state.bossSlugs[bossName];
+        if (state.useWebSocket && !slug) {
+            setMessage('Para usar este Boss via WebSocket, entre nele uma vez pelo modo de clique.', true);
             renderPanel();
             return false;
         }
 
         cancelTransition();
+        state.bossName = bossName;
         state.slug = slug;
+        knownBossSlug = null;
         state.running = true;
         state.stopping = false;
         lastActivity = Date.now();
-        if (!sendWs({ type: 'enter-hunt', slug: state.slug })) {
-            state.running = false;
-            setMessage('Não foi possível enviar enter-hunt. Automação não iniciada.', true);
-            saveState();
-            renderPanel();
-            return false;
-        }
-
-        setMessage(`🚀 Farm iniciado em: ${state.slug}`);
+        if (!enterBoss()) return false;
         startWatchdog();
         saveState();
         renderPanel();
@@ -334,6 +517,10 @@
 
     function stopFarm() {
         if (!state.running && !isTransitioning) return getStatus();
+        if (navigationInProgress) {
+            pauseFarm('🛑 Entrada pela janela Bosses interrompida. Nenhuma saída enviada ao jogo.');
+            return getStatus();
+        }
         if (!state.stopping) {
             state.stopping = true;
             setMessage('⏳ Parada agendada para depois de sair e curar o time...');
@@ -399,12 +586,21 @@
 
         panel.querySelector('#pba-wins').textContent = String(state.wins);
         panel.querySelector('#pba-losses').textContent = String(state.losses);
-        const slugInput = panel.querySelector('#pba-slug');
-        slugInput.disabled = state.running || isTransitioning;
-        if (slugInput.value !== state.slug) slugInput.value = state.slug;
+        const bossInput = panel.querySelector('#pba-boss-name');
+        bossInput.value = state.bossName;
+        bossInput.disabled = state.running || isTransitioning;
+        const webSocketInput = panel.querySelector('#pba-use-websocket');
+        webSocketInput.checked = state.useWebSocket;
+        webSocketInput.disabled = state.running || isTransitioning;
 
         const startButton = panel.querySelector('.pba-start');
         startButton.hidden = state.running || isTransitioning;
+        const missingSlug = state.useWebSocket && !state.bossSlugs[state.bossName];
+        startButton.disabled = missingSlug;
+        const entryHelp = panel.querySelector('.pba-entry-help');
+        entryHelp.hidden = !missingSlug;
+        entryHelp.textContent = missingSlug
+            ? 'Para usar este Boss via WebSocket, entre nele uma vez pelo modo de clique.' : '';
         const pauseButton = panel.querySelector('.pba-pause');
         pauseButton.hidden = !state.running;
         pauseButton.textContent = state.stopping ? 'Parar Somente Automação' : 'Agendar Parada';
@@ -422,9 +618,14 @@
             <header><span>☠️ Auto Boss</span><button class="pba-close" type="button">×</button></header>
             <div class="pba-body">
                 <div class="pba-input-group">
-                    <label for="pba-slug">Slug do Boss:</label>
-                    <input type="text" id="pba-slug" />
+                    <label for="pba-boss-name">Boss:</label>
+                    <select id="pba-boss-name"><option>Giant Cruel</option><option>Ancient Aero</option></select>
                 </div>
+                <label class="pba-option" for="pba-use-websocket">
+                    <input type="checkbox" id="pba-use-websocket" /> Entrar via WebSocket
+                </label>
+                <div class="pba-option-help">Desmarcado: abre Bosses, seleciona o nome e clica em Challenge Boss. A entrada consome os Boss Tokens indicados pelo jogo. Marcado: entra no Boss selecionado diretamente via WebSocket.</div>
+                <div class="pba-entry-help" hidden></div>
                 <div class="pba-summary">
                     <span>🏆 <b id="pba-wins" class="text-green">0</b></span>
                     <span>💀 <b id="pba-losses" class="text-red">0</b></span>
@@ -449,9 +650,16 @@
         panel.querySelector('.pba-start').addEventListener('click', startFarm);
         panel.querySelector('.pba-pause').addEventListener('click', stopFarm);
         panel.querySelector('.pba-reset').addEventListener('click', resetStats);
-        panel.querySelector('#pba-slug').addEventListener('change', event => {
+        panel.querySelector('#pba-use-websocket').addEventListener('change', event => {
             if (state.running || isTransitioning) return;
-            state.slug = String(event.target.value || '').trim();
+            state.useWebSocket = event.target.checked === true;
+            saveState();
+            renderPanel();
+        });
+        panel.querySelector('#pba-boss-name').addEventListener('change', event => {
+            if (state.running || isTransitioning || !BOSS_NAMES.includes(event.target.value)) return;
+            state.bossName = event.target.value;
+            state.slug = state.bossSlugs[state.bossName];
             saveState();
             renderPanel();
         });
@@ -496,7 +704,10 @@
             #piw-boss-panel .pba-body { padding:11px;overflow:auto;max-height:400px; }
             #piw-boss-panel .pba-input-group { margin-bottom:10px;display:flex;flex-direction:column;gap:4px; }
             #piw-boss-panel .pba-input-group label { font-size:11px;color:#a0aec0;text-transform:uppercase;font-weight:bold; }
-            #piw-boss-panel .pba-input-group input { background:#0a1219;border:1px solid #315269;color:#fff;padding:6px 8px;border-radius:6px;font-family:monospace; }
+            #piw-boss-panel .pba-input-group select { background:#0a1219;border:1px solid #315269;color:#fff;padding:6px 8px;border-radius:6px;font-family:monospace; }
+            #piw-boss-panel .pba-option { display:flex;align-items:center;gap:7px;cursor:pointer; }
+            #piw-boss-panel .pba-option-help { color:#a0aec0;font-size:11px;margin:5px 0 10px; }
+            #piw-boss-panel .pba-entry-help { color:#fbd38d;font-size:11px;margin-bottom:10px; }
             #piw-boss-panel .pba-summary { display:flex;align-items:center;justify-content:space-around;background:#101f2a;border:1px solid #20394b;border-radius:8px;padding:9px 11px;margin-bottom:8px;font-size:16px; }
             #piw-boss-panel .text-green { color:#48bb78; }
             #piw-boss-panel .text-red { color:#f56565; }

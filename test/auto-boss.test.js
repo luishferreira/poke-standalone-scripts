@@ -6,11 +6,32 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'auto-boss.user.js'), 'utf8');
 
-function createHarness(savedState = null, { beforeInstall = null } = {}) {
+// Os testes de lifecycle existentes exercitam explicitamente o modo WebSocket.
+function createHarness(savedState = { useWebSocket: true }, {
+    beforeInstall = null,
+    bossAvailable = true,
+    selectionDelayMs = 0,
+    confirmEntry = true,
+    challengeThrows = false,
+    bossesButtonAvailable = true,
+    challengeDisabled = false,
+    mismatchedDetail = false,
+    bossSoon = false,
+    windowInitiallyOpen = false,
+    altarInitiallySelected = false,
+    entrySlug = 'cruel_boss',
+    selectedBossName = null,
+} = {}) {
     let now = 0;
     let nextTimerId = 1;
     const timers = new Map();
     const storage = new Map();
+    let currentSocket = null;
+    let bossWindowOpen = windowInitiallyOpen;
+    let selectedBoss = 'Ancient Aero';
+    let altarSelected = altarInitiallySelected;
+    const clicks = [];
+    const clickedSlugs = [];
     if (savedState) storage.set('piw_boss_farm_v1', JSON.stringify(savedState));
 
     class FakeDate extends Date {
@@ -32,6 +53,7 @@ function createHarness(savedState = null, { beforeInstall = null } = {}) {
             this.readyState = FakeWebSocket.OPEN;
             this.sent = [];
             this.listeners = new Map();
+            currentSocket = this;
         }
 
         send(data) {
@@ -61,6 +83,49 @@ function createHarness(savedState = null, { beforeInstall = null } = {}) {
         return id;
     };
 
+    // Seletores/nome/classes vêm do HTML da janela Bosses fornecido pelo usuário.
+    const bossesButton = { click() { clicks.push('Bosses'); bossWindowOpen = true; } };
+    const challenge = {
+        disabled: challengeDisabled,
+        click() {
+            if (challengeThrows) throw new Error('Desafio indisponível');
+            clicks.push('Challenge Boss');
+            clickedSlugs.push(entrySlug);
+            bossWindowOpen = false;
+            if (confirmEntry) currentSocket?.send(JSON.stringify({ type: 'enter-hunt', slug: entrySlug }));
+        },
+    };
+    const rows = ['Ancient Aero', 'Giant Cruel'].map(name => ({
+        querySelector(selector) {
+            return selector === '.boss-lname' ? { textContent: `⚔️ ${name}` } : null;
+        },
+        matches(selector) {
+            if (selector === '.on') return selectedBoss === name;
+            if (selector === '.soon') return bossSoon && name === 'Giant Cruel';
+            return false;
+        },
+        click() {
+            clicks.push(name);
+            if (selectionDelayMs) setTimer(() => { selectedBoss = name; }, selectionDelayMs, 0);
+            else selectedBoss = name;
+        },
+    }));
+    const bossWindow = {
+        querySelectorAll(selector) {
+            if (selector === 'button.mk-tab') return [{
+                textContent: ' Bosses',
+                matches() { return !altarSelected; },
+                click() { clicks.push('Aba Bosses'); altarSelected = false; },
+            }];
+            return selector === 'button.boss-litem' && bossAvailable && !altarSelected ? rows : [];
+        },
+        querySelector(selector) {
+            if (selector === '.boss-hname') return { textContent: mismatchedDetail ? 'Outro Boss' : selectedBoss };
+            if (selector === 'button.boss-challenge') return challenge;
+            return null;
+        },
+    };
+
     const context = {
         console: { log() {}, warn() {} },
         Date: FakeDate,
@@ -79,8 +144,18 @@ function createHarness(savedState = null, { beforeInstall = null } = {}) {
             readyState: 'loading',
             addEventListener() {},
             createElement() { throw new Error('DOM não deve ser criado neste teste'); },
-            querySelector() { return null; }
+            querySelector(selector) {
+                if (selector === 'button[data-guide="dock-bosses"]') return bossesButtonAvailable ? bossesButton : null;
+                if (selector === '.boss-window') return bossWindowOpen ? bossWindow : null;
+                if (selector === '#pba-boss-name' && selectedBossName !== null) return { value: selectedBossName };
+                if (selector.includes('dock-map') || selector.includes('map-window')) throw new Error('Boss não usa mapa');
+                return null;
+            },
+            querySelectorAll(selector) {
+                return [];
+            },
         },
+        getComputedStyle() { return { display: 'block' }; },
         sessionStorage: {
             getItem(key) { return storage.get(key) ?? null; },
             setItem(key, value) { storage.set(key, String(value)); }
@@ -116,11 +191,33 @@ function createHarness(savedState = null, { beforeInstall = null } = {}) {
         return socket;
     }
 
+    async function settle() {
+        for (let index = 0; index < 12; index += 1) await Promise.resolve();
+    }
+
+    async function tickAsync(milliseconds) {
+        const target = now + milliseconds;
+        await settle();
+        while (true) {
+            const pending = [...timers.values()]
+                .filter(timer => timer.dueAt <= target)
+                .sort((a, b) => a.dueAt - b.dueAt)[0];
+            if (!pending) break;
+            tick(pending.dueAt - now);
+            await settle();
+        }
+        tick(target - now);
+        await settle();
+    }
+
     function reinject() {
         vm.runInContext(source, context);
     }
 
-    return { api: context.piwBossFarm, captureSocket, context, reinject, storage, tick };
+    return {
+        api: context.piwBossFarm, captureSocket, clicks, clickedSlugs, context, reinject, storage,
+        settle, tick, tickAsync,
+    };
 }
 
 function sentTypes(socket) {
@@ -310,7 +407,7 @@ test('uninstall remove somente o subscriber do Auto Boss', () => {
 test('não duplica o ciclo do Boss com wrapper externo antes ou depois do bundle', () => {
     for (const wrapperOrder of ['before', 'after']) {
         const observedTypes = [];
-        const harness = createHarness(null, {
+        const harness = createHarness({ useWebSocket: true }, {
             beforeInstall: wrapperOrder === 'before'
                 ? context => installQolLikeWrapper(context, observedTypes)
                 : null
@@ -336,4 +433,239 @@ test('não duplica o ciclo do Boss com wrapper externo antes ou depois do bundle
         );
         assert.equal(harness.context.piwScripts.wsBridge.status().subscribers, 1, wrapperOrder);
     }
+});
+
+test('entrada padrão e reentrada abrem Bosses, selecionam Giant Cruel e desafiam uma vez', async () => {
+    const harness = createHarness(null);
+    const socket = harness.captureSocket();
+    assert.equal(harness.api.status().useWebSocket, false);
+    assert.equal(harness.api.start(), true);
+    assert.equal(harness.api.start(), false);
+    assert.equal(harness.api.status().transitioning, true);
+    assert.deepEqual(socket.sent, []);
+    await harness.settle();
+    assert.deepEqual(harness.clickedSlugs, ['cruel_boss']);
+    assert.deepEqual(harness.clicks, ['Bosses', 'Giant Cruel', 'Challenge Boss']);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt']);
+    assert.equal(harness.api.status().transitioning, false);
+
+    socket.emit('message', { type: 'field', bossOutcome: 'won', bossLoot: [] });
+    await harness.tickAsync(3000);
+    assert.deepEqual(harness.clickedSlugs, ['cruel_boss', 'cruel_boss']);
+    assert.deepEqual(harness.clicks, ['Bosses', 'Giant Cruel', 'Challenge Boss', 'Bosses', 'Giant Cruel', 'Challenge Boss']);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt', 'leave-hunt', 'joy-heal', 'enter-hunt']);
+    assert.equal(harness.api.status().wins, 1);
+    assert.equal(harness.api.status().running, true);
+});
+
+test('WebSocket opt-in persiste por aba e não abre Bosses', () => {
+    const harness = createHarness({ useWebSocket: true, slug: 'cruel_boss' });
+    const socket = harness.captureSocket();
+    assert.equal(harness.api.start(), true);
+    assert.equal(harness.api.status().transitioning, false);
+    assert.deepEqual(harness.clickedSlugs, []);
+    assert.deepEqual(harness.clicks, []);
+    assert.deepEqual(socket.sent, [{ type: 'enter-hunt', slug: 'cruel_boss' }]);
+    assert.equal(JSON.parse(harness.storage.get('piw_boss_farm_v1')).useWebSocket, true);
+});
+
+test('configuração antiga ou inválida usa janela Bosses e inicia pausada', () => {
+    for (const savedState of [null, {}, { useWebSocket: 'true', running: true }, { useWebSocket: 1 }]) {
+        const harness = createHarness(savedState);
+        assert.equal(harness.api.status().useWebSocket, false);
+        assert.equal(harness.api.status().bossName, 'Giant Cruel');
+        assert.equal(harness.api.status().running, false);
+    }
+});
+
+test('aguarda o detalhe da seleção antes de desafiar, sem reabrir janela já aberta', async () => {
+    const harness = createHarness(null, { selectionDelayMs: 500, windowInitiallyOpen: true });
+    const socket = harness.captureSocket();
+    harness.api.start();
+    await harness.settle();
+    assert.deepEqual(harness.clicks, ['Giant Cruel']);
+    assert.deepEqual(socket.sent, []);
+    await harness.tickAsync(600);
+    assert.deepEqual(harness.clickedSlugs, ['cruel_boss']);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt']);
+    assert.equal(harness.api.status().transitioning, false);
+});
+
+test('boss ou botão Bosses ausente pausa sem fallback WebSocket', async () => {
+    for (const options of [{ bossAvailable: false }, { bossesButtonAvailable: false }]) {
+        const harness = createHarness(null, options);
+        const socket = harness.captureSocket();
+        harness.api.start();
+        await harness.tickAsync(3500);
+        assert.equal(harness.api.status().running, false);
+        assert.equal(harness.api.status().transitioning, false);
+        assert.match(harness.api.status().lastMessage, /preparar o desafio|Botão Bosses indisponível/);
+        assert.deepEqual(socket.sent, []);
+    }
+});
+
+test('desafio com erro ou sem confirmação pausa sem repetir entrada', async () => {
+    for (const options of [{ challengeThrows: true }, { confirmEntry: false }]) {
+        const harness = createHarness(null, options);
+        const socket = harness.captureSocket();
+        harness.api.start();
+        await harness.tickAsync(5000);
+        assert.equal(harness.api.status().running, false);
+        assert.equal(harness.api.status().transitioning, false);
+        assert.match(harness.api.status().lastMessage, /Desafio indisponível|não confirmou/);
+        assert.deepEqual(socket.sent, []);
+        assert.ok(harness.clickedSlugs.length <= 1);
+    }
+});
+
+test('obtém o slug opaco emitido pelo jogo, sem derivar ID de Ancient Aero', async () => {
+    const harness = createHarness({ bossName: 'Ancient Aero', slug: 'outro-slug' }, { entrySlug: 'opaque-fixture' });
+    const socket = harness.captureSocket();
+    harness.api.start();
+    await harness.settle();
+    assert.deepEqual(harness.clicks, ['Bosses', 'Ancient Aero', 'Challenge Boss']);
+    assert.equal(harness.api.status().transitioning, false);
+    assert.equal(harness.api.status().slug, 'opaque-fixture');
+    assert.deepEqual(socket.sent, [{ type: 'enter-hunt', slug: 'opaque-fixture' }]);
+    const saved = JSON.parse(harness.storage.get('piw_boss_farm_v1'));
+    assert.equal(saved.bossName, 'Ancient Aero');
+    assert.equal(saved.slug, 'opaque-fixture');
+    assert.equal(saved.bossSlugs['Ancient Aero'], 'opaque-fixture');
+});
+
+test('parada, desconexão, troca de socket e uninstall cancelam navegação pendente', async () => {
+    for (const action of ['stop', 'close', 'replace', 'uninstall']) {
+        const harness = createHarness(null, { selectionDelayMs: 500 });
+        const socket = harness.captureSocket();
+        harness.api.start();
+        await harness.settle();
+        if (action === 'stop') harness.api.stop();
+        if (action === 'close') {
+            socket.readyState = harness.context.WebSocket.CLOSED;
+            socket.emit('close');
+        }
+        if (action === 'replace') harness.captureSocket('wss://poke.idleworld.online/ws2');
+        if (action === 'uninstall') harness.api.uninstall();
+        await harness.tickAsync(10000);
+        assert.equal(harness.api.status().running, false, action);
+        assert.equal(harness.api.status().transitioning, false, action);
+        assert.deepEqual(harness.clickedSlugs, [], action);
+        assert.deepEqual(socket.sent, [], action);
+    }
+});
+
+test('parada agendada no modo clique conclui saída e cura sem desafiar novamente', async () => {
+    const harness = createHarness(null);
+    const socket = harness.captureSocket();
+    harness.api.start();
+    await harness.settle();
+    harness.api.stop();
+    socket.emit('message', { type: 'field', bossOutcome: 'lost' });
+    await harness.tickAsync(3000);
+    assert.deepEqual(harness.clickedSlugs, ['cruel_boss']);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt', 'leave-hunt', 'joy-heal']);
+    assert.equal(harness.api.status().running, false);
+});
+
+test('detalhe diferente, desafio desabilitado ou boss em breve impedem consumir entrada', async () => {
+    for (const options of [{ mismatchedDetail: true }, { challengeDisabled: true }, { bossSoon: true }]) {
+        const harness = createHarness(null, options);
+        const socket = harness.captureSocket();
+        harness.api.start();
+        await harness.tickAsync(2000);
+        assert.equal(harness.api.status().running, false);
+        assert.deepEqual(harness.clickedSlugs, []);
+        assert.deepEqual(socket.sent, []);
+        assert.match(harness.api.status().lastMessage, /preparar o desafio|desabilitado|indisponível/);
+    }
+});
+
+test('não aceita tráfego recebido ou envios não relacionados como entrada do desafio', async () => {
+    const harness = createHarness(null, { confirmEntry: false });
+    const socket = harness.captureSocket();
+    harness.api.start();
+    await harness.settle();
+    socket.emit('message', { type: 'enter-hunt', slug: 'cruel_boss' });
+    socket.send(JSON.stringify({ type: 'chat', text: 'teste' }));
+    socket.send(JSON.stringify({ type: 'enter-hunt', slug: null }));
+    await harness.settle();
+    assert.equal(harness.api.status().transitioning, true);
+    await harness.tickAsync(5000);
+    assert.equal(harness.api.status().running, false);
+    assert.equal(harness.clickedSlugs.length, 1);
+});
+
+test('modo clique convive com wrapper externo antes e depois sem duplicar desafio', async () => {
+    for (const wrapperOrder of ['before', 'after']) {
+        const observedTypes = [];
+        const harness = createHarness(null, {
+            beforeInstall: wrapperOrder === 'before' ? context => installQolLikeWrapper(context, observedTypes) : null,
+        });
+        if (wrapperOrder === 'after') installQolLikeWrapper(harness.context, observedTypes);
+        const socket = harness.captureSocket();
+        observedTypes.length = 0;
+        harness.api.start();
+        await harness.settle();
+        assert.deepEqual(observedTypes, ['enter-hunt']);
+        assert.deepEqual(sentTypes(socket), ['enter-hunt']);
+        assert.equal(harness.clickedSlugs.length, 1);
+    }
+});
+
+test('janela aberta no Altar troca para aba Bosses antes de selecionar', async () => {
+    const harness = createHarness(null, { windowInitiallyOpen: true, altarInitiallySelected: true });
+    harness.captureSocket();
+    harness.api.start();
+    await harness.settle();
+    assert.deepEqual(harness.clicks, ['Aba Bosses', 'Giant Cruel', 'Challenge Boss']);
+    assert.equal(harness.api.status().transitioning, false);
+});
+
+test('select em modo WebSocket usa o slug do boss escolhido, sem reutilizar o anterior', () => {
+    const harness = createHarness({
+        bossName: 'Giant Cruel',
+        useWebSocket: true,
+        bossSlugs: { 'Giant Cruel': 'cruel_boss', 'Ancient Aero': 'opaque-fixture' },
+    }, { selectedBossName: 'Ancient Aero' });
+    const socket = harness.captureSocket();
+    assert.equal(harness.api.start(), true);
+    assert.deepEqual(socket.sent, [{ type: 'enter-hunt', slug: 'opaque-fixture' }]);
+    assert.equal(harness.api.status().bossName, 'Ancient Aero');
+    assert.deepEqual(harness.clicks, []);
+});
+
+test('Aero sem slug observado bloqueia WebSocket sem enviar entrada de Giant Cruel', () => {
+    for (const saved of [
+        { bossName: 'Ancient Aero', useWebSocket: true, slug: 'cruel_boss' },
+        { bossName: 'Ancient Aero', useWebSocket: true, bossSlugs: { 'Ancient Aero': 123 } },
+    ]) {
+        const harness = createHarness(saved);
+        const socket = harness.captureSocket();
+        assert.equal(harness.api.status().webSocketAvailable, false);
+        assert.equal(harness.api.start(), false);
+        assert.match(harness.api.status().lastMessage, /uma vez pelo modo de clique/);
+        assert.deepEqual(socket.sent, []);
+    }
+});
+
+test('slug aprendido por clique é salvo por boss e funciona no modo WebSocket após reload', async () => {
+    const harness = createHarness({ bossName: 'Ancient Aero' }, { entrySlug: 'opaque-fixture' });
+    harness.captureSocket();
+    harness.api.start();
+    await harness.settle();
+    const saved = JSON.parse(harness.storage.get('piw_boss_farm_v1'));
+    saved.useWebSocket = true;
+    const restored = createHarness(saved);
+    const socket = restored.captureSocket();
+    assert.equal(restored.api.status().webSocketAvailable, true);
+    assert.equal(restored.api.start(), true);
+    assert.deepEqual(socket.sent, [{ type: 'enter-hunt', slug: 'opaque-fixture' }]);
+});
+
+test('select inválido falha fechado sem clique nem WebSocket', () => {
+    const harness = createHarness({ useWebSocket: true }, { selectedBossName: 'Ghost' });
+    const socket = harness.captureSocket();
+    assert.equal(harness.api.start(), false);
+    assert.deepEqual(socket.sent, []);
+    assert.deepEqual(harness.clicks, []);
 });

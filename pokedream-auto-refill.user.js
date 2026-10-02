@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PokeDream Auto Refill
 // @namespace    poke-manager
-// @version      2.8.2
+// @version      2.8.3
 // @description  Protege itens, vende o loot restante e repõe balls e potions configuráveis pela fila oficial do jogo.
 // @author       Luis
 // @match        https://pokedream.com.br/*
@@ -978,7 +978,7 @@
       if (state.purchaseConfirmation !== pending) return;
       syncGameState();
       if (state.purchaseConfirmation === pending && state.enabled) {
-        setMessage('Compra enviada, mas o estoque ainda não confirmou toda a reposição. Sem nova tentativa automática.', true);
+        setMessage('Compra enviada, mas o estoque ainda não confirmou toda a reposição.', true);
       }
     }, PURCHASE_CONFIRMATION_TIMEOUT_MS);
   }
