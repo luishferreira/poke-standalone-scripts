@@ -21,6 +21,13 @@ function createHarness(savedState = { useWebSocket: true }, {
     altarInitiallySelected = false,
     entrySlug = 'cruel_boss',
     selectedBossName = null,
+    victoryDelayMs = 0,
+    pendingVictory = false,
+    victoryBossName = 'Giant Cruel',
+    joyAvailable = true,
+    npcName = 'Nurse Joy',
+    healConfirmed = true,
+    healClosesDialog = true,
 } = {}) {
     let now = 0;
     let nextTimerId = 1;
@@ -30,6 +37,9 @@ function createHarness(savedState = { useWebSocket: true }, {
     let bossWindowOpen = windowInitiallyOpen;
     let selectedBoss = 'Ancient Aero';
     let altarSelected = altarInitiallySelected;
+    let victoryOpen = pendingVictory;
+    let dialogOpen = false;
+    let healed = true;
     const clicks = [];
     const clickedSlugs = [];
     if (savedState) storage.set('piw_boss_farm_v1', JSON.stringify(savedState));
@@ -72,6 +82,10 @@ function createHarness(savedState = { useWebSocket: true }, {
         }
 
         emit(type, payload = null) {
+            if (type === 'message' && payload?.type === 'field' && payload.bossOutcome === 'won') {
+                if (victoryDelayMs) setTimer(() => { victoryOpen = true; }, victoryDelayMs, 0);
+                else victoryOpen = true;
+            }
             const event = type === 'message' ? { data: JSON.stringify(payload) } : {};
             for (const handler of [...(this.listeners.get(type) || [])]) handler(event);
         }
@@ -126,6 +140,23 @@ function createHarness(savedState = { useWebSocket: true }, {
         },
     };
 
+    const victoryWindow = {
+        querySelector(selector) {
+            if (selector === '.bvic-desc b') return { textContent: victoryBossName };
+            if (selector === 'button.bvic-ok') return { click() { clicks.push('OK'); victoryOpen = false; } };
+            return null;
+        },
+        querySelectorAll() { return []; },
+    };
+    const joyDialog = {
+        querySelector(selector) { return selector === '.npc-dlg-name' ? { textContent: npcName } : null; },
+        querySelectorAll() { return [{ textContent: '💊 Curar equipe', click() {
+            clicks.push('Curar equipe');
+            healed = healConfirmed;
+            if (healClosesDialog) dialogOpen = false;
+        } }]; },
+    };
+
     const context = {
         console: { log() {}, warn() {} },
         Date: FakeDate,
@@ -146,12 +177,20 @@ function createHarness(savedState = { useWebSocket: true }, {
             createElement() { throw new Error('DOM não deve ser criado neste teste'); },
             querySelector(selector) {
                 if (selector === 'button[data-guide="dock-bosses"]') return bossesButtonAvailable ? bossesButton : null;
-                if (selector === '.boss-window') return bossWindowOpen ? bossWindow : null;
+                if (selector === '.boss-window:not(.bvic-window)') return bossWindowOpen ? bossWindow : null;
+                if (selector === '.bvic-window') return victoryOpen ? victoryWindow : null;
+                if (selector === '.npc-dialog') return dialogOpen ? joyDialog : null;
                 if (selector === '#pba-boss-name' && selectedBossName !== null) return { value: selectedBossName };
                 if (selector.includes('dock-map') || selector.includes('map-window')) throw new Error('Boss não usa mapa');
                 return null;
             },
             querySelectorAll(selector) {
+                if (selector === 'button.npc-plate-btn' && joyAvailable) return [{
+                    textContent: 'Conversar', click() { clicks.push('Conversar'); dialogOpen = true; },
+                }];
+                if (selector === '.phud-mon') return [{ querySelector() {
+                    return { textContent: healed ? '16884/16884' : '8300/16884' };
+                } }];
                 return [];
             },
         },
@@ -217,6 +256,7 @@ function createHarness(savedState = { useWebSocket: true }, {
     return {
         api: context.piwBossFarm, captureSocket, clicks, clickedSlugs, context, reinject, storage,
         settle, tick, tickAsync,
+        showVictory() { victoryOpen = true; },
     };
 }
 
@@ -277,16 +317,39 @@ test('ignora fainted individual e finaliza vitória com leave, heal e nova entra
     assert.match(harness.api.status().lootHistory[0], /<Rare Candy>/);
 });
 
-test('qualquer bossOutcome diferente de won conta derrota e também cura', () => {
+test('derrota pausa imediatamente, sai e cura sem iniciar outro boss via WebSocket', () => {
     const harness = createHarness();
     const socket = harness.captureSocket();
     harness.api.start();
     socket.emit('message', { type: 'field', bossOutcome: 'lost' });
-    harness.tick(3000);
+    assert.equal(harness.api.status().running, false);
+    assert.equal(harness.api.status().transitioning, true);
+    assert.equal(harness.api.start(), false);
+    socket.emit('message', { type: 'field', bossOutcome: 'lost' });
+    harness.tick(60000);
 
-    assert.deepEqual(sentTypes(socket), ['enter-hunt', 'leave-hunt', 'joy-heal', 'enter-hunt']);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt', 'leave-hunt', 'joy-heal']);
     assert.equal(harness.api.status().wins, 0);
     assert.equal(harness.api.status().losses, 1);
+    assert.equal(harness.api.status().running, false);
+    assert.equal(harness.api.status().transitioning, false);
+    assert.match(harness.api.status().lastMessage, /pausada após derrota/);
+    assert.equal(harness.api.start(), true);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt', 'leave-hunt', 'joy-heal', 'enter-hunt']);
+});
+
+test('derrota no modo clique pausa sem inventar saída/cura nem outro desafio', async () => {
+    const harness = createHarness(null);
+    const socket = harness.captureSocket();
+    harness.api.start();
+    await harness.settle();
+    socket.emit('message', { type: 'field', bossOutcome: 'lost' });
+    assert.equal(harness.api.status().running, false);
+    await harness.tickAsync(60000);
+    assert.deepEqual(harness.clicks, ['Bosses', 'Giant Cruel', 'Challenge Boss']);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt']);
+    assert.equal(harness.api.status().losses, 1);
+    assert.equal(harness.api.status().transitioning, false);
 });
 
 test('parada agendada espera resultado, cura e não reentra', () => {
@@ -452,8 +515,8 @@ test('entrada padrão e reentrada abrem Bosses, selecionam Giant Cruel e desafia
     socket.emit('message', { type: 'field', bossOutcome: 'won', bossLoot: [] });
     await harness.tickAsync(3000);
     assert.deepEqual(harness.clickedSlugs, ['cruel_boss', 'cruel_boss']);
-    assert.deepEqual(harness.clicks, ['Bosses', 'Giant Cruel', 'Challenge Boss', 'Bosses', 'Giant Cruel', 'Challenge Boss']);
-    assert.deepEqual(sentTypes(socket), ['enter-hunt', 'leave-hunt', 'joy-heal', 'enter-hunt']);
+    assert.deepEqual(harness.clicks, ['Bosses', 'Giant Cruel', 'Challenge Boss', 'OK', 'Conversar', 'Curar equipe', 'Bosses', 'Giant Cruel', 'Challenge Boss']);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt', 'enter-hunt']);
     assert.equal(harness.api.status().wins, 1);
     assert.equal(harness.api.status().running, true);
 });
@@ -496,7 +559,7 @@ test('boss ou botão Bosses ausente pausa sem fallback WebSocket', async () => {
         const harness = createHarness(null, options);
         const socket = harness.captureSocket();
         harness.api.start();
-        await harness.tickAsync(3500);
+        await harness.tickAsync(11000);
         assert.equal(harness.api.status().running, false);
         assert.equal(harness.api.status().transitioning, false);
         assert.match(harness.api.status().lastMessage, /preparar o desafio|Botão Bosses indisponível/);
@@ -554,16 +617,17 @@ test('parada, desconexão, troca de socket e uninstall cancelam navegação pend
     }
 });
 
-test('parada agendada no modo clique conclui saída e cura sem desafiar novamente', async () => {
+test('parada agendada no modo clique confirma recompensa e cura sem desafiar novamente', async () => {
     const harness = createHarness(null);
     const socket = harness.captureSocket();
     harness.api.start();
     await harness.settle();
     harness.api.stop();
-    socket.emit('message', { type: 'field', bossOutcome: 'lost' });
+    socket.emit('message', { type: 'field', bossOutcome: 'won' });
     await harness.tickAsync(3000);
     assert.deepEqual(harness.clickedSlugs, ['cruel_boss']);
-    assert.deepEqual(sentTypes(socket), ['enter-hunt', 'leave-hunt', 'joy-heal']);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt']);
+    assert.deepEqual(harness.clicks, ['Bosses', 'Giant Cruel', 'Challenge Boss', 'OK', 'Conversar', 'Curar equipe']);
     assert.equal(harness.api.status().running, false);
 });
 
@@ -572,7 +636,7 @@ test('detalhe diferente, desafio desabilitado ou boss em breve impedem consumir 
         const harness = createHarness(null, options);
         const socket = harness.captureSocket();
         harness.api.start();
-        await harness.tickAsync(2000);
+        await harness.tickAsync(11000);
         assert.equal(harness.api.status().running, false);
         assert.deepEqual(harness.clickedSlugs, []);
         assert.deepEqual(socket.sent, []);
@@ -668,4 +732,109 @@ test('select inválido falha fechado sem clique nem WebSocket', () => {
     assert.equal(harness.api.start(), false);
     assert.deepEqual(socket.sent, []);
     assert.deepEqual(harness.clicks, []);
+});
+
+test('vitória visual confirma OK e cura mesmo sem bossOutcome recebido', async () => {
+    const harness = createHarness(null);
+    const socket = harness.captureSocket();
+    harness.api.start();
+    await harness.settle();
+    harness.api.stop();
+    harness.showVictory();
+    await harness.tickAsync(1000);
+    assert.equal(harness.api.status().wins, 1);
+    assert.equal(harness.api.status().running, false);
+    assert.deepEqual(harness.clicks.slice(3), ['OK', 'Conversar', 'Curar equipe']);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt']);
+});
+
+test('espera render atrasado da vitória e ignora bossOutcome duplicado durante limpeza', async () => {
+    const harness = createHarness(null, { victoryDelayMs: 2000, selectionDelayMs: 2000 });
+    const socket = harness.captureSocket();
+    harness.api.start();
+    await harness.tickAsync(2100);
+    harness.api.stop();
+    socket.emit('message', { type: 'field', bossOutcome: 'won' });
+    socket.emit('message', { type: 'field', bossOutcome: 'won' });
+    await harness.tickAsync(1000);
+    assert.equal(harness.api.status().transitioning, true);
+    assert.equal(harness.clicks.includes('OK'), false);
+    await harness.tickAsync(1500);
+    assert.equal(harness.api.status().wins, 1);
+    assert.equal(harness.clicks.filter(click => click === 'OK').length, 1);
+    assert.equal(harness.clicks.filter(click => click === 'Curar equipe').length, 1);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt']);
+});
+
+test('recompensa já aberta bloqueia entrada e janela de outro boss não é aceita', async () => {
+    const pending = createHarness(null, { pendingVictory: true });
+    const pendingSocket = pending.captureSocket();
+    pending.api.start();
+    await pending.settle();
+    assert.equal(pending.api.status().running, false);
+    assert.deepEqual(pending.clicks, []);
+    assert.deepEqual(sentTypes(pendingSocket), []);
+
+    const harness = createHarness(null, { victoryBossName: 'Ancient Aero' });
+    const socket = harness.captureSocket();
+    harness.api.start();
+    await harness.settle();
+    socket.emit('message', { type: 'field', bossOutcome: 'won' });
+    await harness.tickAsync(6000);
+    assert.equal(harness.api.status().running, false);
+    assert.equal(harness.clicks.includes('OK'), false);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt']);
+});
+
+test('NPC diferente, conversa ausente ou cura não confirmada pausam sem retry nem WS direto', async () => {
+    for (const options of [
+        { npcName: 'Outro NPC' }, { joyAvailable: false },
+        { healConfirmed: false }, { healClosesDialog: false },
+    ]) {
+        const harness = createHarness(null, options);
+        const socket = harness.captureSocket();
+        harness.api.start();
+        await harness.settle();
+        socket.emit('message', { type: 'field', bossOutcome: 'won' });
+        await harness.tickAsync(11000);
+        assert.equal(harness.api.status().running, false);
+        assert.equal(harness.api.status().transitioning, false);
+        assert.equal(harness.clickedSlugs.length, 1);
+        assert.ok(harness.clicks.filter(click => click === 'Curar equipe').length <= 1);
+        if (options.npcName) assert.equal(harness.clicks.includes('Curar equipe'), false);
+        assert.deepEqual(sentTypes(socket), ['enter-hunt']);
+    }
+});
+
+test('parada forçada durante espera visual conclui cura sem reentrada', async () => {
+    const harness = createHarness(null, { victoryDelayMs: 1500 });
+    const socket = harness.captureSocket();
+    harness.api.start();
+    await harness.settle();
+    socket.emit('message', { type: 'field', bossOutcome: 'won' });
+    harness.api.stop();
+    harness.api.stop();
+    await harness.tickAsync(3000);
+    assert.equal(harness.api.status().transitioning, false);
+    assert.equal(harness.api.status().running, false);
+    assert.deepEqual(harness.clicks.slice(3), ['OK', 'Conversar', 'Curar equipe']);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt']);
+});
+
+test('desconexão, substituição ou uninstall cancelam espera de recompensa sem cliques tardios', async () => {
+    for (const action of ['close', 'replace', 'uninstall']) {
+        const harness = createHarness(null, { victoryDelayMs: 1500 });
+        const socket = harness.captureSocket();
+        harness.api.start();
+        await harness.settle();
+        socket.emit('message', { type: 'field', bossOutcome: 'won' });
+        if (action === 'close') socket.emit('close');
+        if (action === 'replace') harness.captureSocket('wss://poke.idleworld.online/ws2');
+        if (action === 'uninstall') harness.api.uninstall();
+        await harness.tickAsync(5000);
+        assert.equal(harness.api.status().running, false);
+        assert.equal(harness.api.status().transitioning, false);
+        assert.equal(harness.clicks.includes('OK'), false);
+        assert.deepEqual(sentTypes(socket), ['enter-hunt']);
+    }
 });

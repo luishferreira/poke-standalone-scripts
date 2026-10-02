@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Auto Boss Farmer PIW
-// @version      1.6.2
+// @version      1.6.4
 // @description  Painel para farmar Bosses com HUD, cura entre lutas e parada agendada.
 // @author       Luis
 // @match        https://poke.idleworld.online/play
@@ -906,7 +906,7 @@
     const TRANSITION_DELAY_MS = 1500;
     const WATCHDOG_SILENCE_MS = 45000;
     const WATCHDOG_CHECK_MS = 5000;
-    const BOSS_DOM_TIMEOUT_MS = 1500;
+    const BOSS_DOM_TIMEOUT_MS = 5000;
     const HUNT_ENTRY_TIMEOUT_MS = 4000;
     const DOM_RETRY_MS = 100;
     const BOSS_NAMES = ['Giant Cruel', 'Ancient Aero'];
@@ -924,6 +924,7 @@
     let knownBossSlug = null;
     let lastActivity = Date.now();
     let watchdogTimer = null;
+    let resultMonitorTimer = null;
     let interfaceObserver = null;
     let observerTimer = null;
     let unregisterMenu = null;
@@ -1025,6 +1026,8 @@
     function clearWatchdog() {
         if (watchdogTimer) clearInterval(watchdogTimer);
         watchdogTimer = null;
+        if (resultMonitorTimer) clearInterval(resultMonitorTimer);
+        resultMonitorTimer = null;
     }
 
     function cancelTransition() {
@@ -1052,14 +1055,14 @@
             transitionTimer = setTimeout(() => {
                 transitionTimer = null;
                 navigationResolve = null;
-                resolve(state.running && generation === transitionGeneration);
+                resolve((state.running || isTransitioning) && generation === transitionGeneration);
             }, delayMs);
         });
     }
 
     async function waitForDom(find, timeoutMs, generation) {
         const deadline = Date.now() + timeoutMs;
-        while (state.running && generation === transitionGeneration) {
+        while ((state.running || isTransitioning) && generation === transitionGeneration) {
             const found = find();
             if (found) return found;
             if (Date.now() >= deadline) return null;
@@ -1079,7 +1082,7 @@
     }
 
     function getSelectedBossChallenge(bossName) {
-        const bossWindow = document.querySelector('.boss-window');
+        const bossWindow = document.querySelector('.boss-window:not(.bvic-window)');
         const selected = Array.from(bossWindow?.querySelectorAll('button.boss-litem') || [])
             .find(item => item.matches('.on')
                 && normalizeBossName(item.querySelector('.boss-lname')?.textContent) === bossName);
@@ -1089,23 +1092,24 @@
     }
 
     async function locateBossChallenge(bossName, generation) {
-        if (!isElementVisible(document.querySelector('.boss-window'))) {
+        if (document.querySelector('.bvic-window')) throw new Error('Há uma recompensa pendente. Confirme-a no jogo antes de iniciar.');
+        if (!isElementVisible(document.querySelector('.boss-window:not(.bvic-window)'))) {
             const bossesButton = document.querySelector('button[data-guide="dock-bosses"]');
             if (!bossesButton || bossesButton.disabled) throw new Error('Botão Bosses indisponível.');
             bossesButton.click();
             const opened = await waitForDom(() => {
-                const candidate = document.querySelector('.boss-window');
+                const candidate = document.querySelector('.boss-window:not(.bvic-window)');
                 return isElementVisible(candidate) ? candidate : null;
             }, BOSS_DOM_TIMEOUT_MS, generation);
             if (!opened) return null;
         }
 
-        const bossesTab = Array.from(document.querySelector('.boss-window')?.querySelectorAll('button.mk-tab') || [])
+        const bossesTab = Array.from(document.querySelector('.boss-window:not(.bvic-window)')?.querySelectorAll('button.mk-tab') || [])
             .find(tab => tab.textContent.trim() === 'Bosses');
         if (bossesTab && !bossesTab.matches('.on')) bossesTab.click();
 
         const boss = await waitForDom(() => {
-            const bossWindow = document.querySelector('.boss-window');
+            const bossWindow = document.querySelector('.boss-window:not(.bvic-window)');
             return Array.from(bossWindow?.querySelectorAll('button.boss-litem') || [])
                 .find(item => normalizeBossName(item.querySelector('.boss-lname')?.textContent) === bossName);
         }, BOSS_DOM_TIMEOUT_MS, generation);
@@ -1192,6 +1196,18 @@
 
     function startWatchdog() {
         clearWatchdog();
+        if (!state.useWebSocket) {
+            resultMonitorTimer = setInterval(() => {
+                if (!state.running || isTransitioning) return;
+                const victory = getBossVictory();
+                if (!victory) return;
+                const bossLoot = Array.from(victory.querySelectorAll('.bvic-chip')).map(chip => ({
+                    name: chip.querySelector('.bvic-chip-name')?.textContent,
+                    qty: Number(chip.querySelector('.bvic-chip-qty')?.textContent.replace('×', '').trim()),
+                }));
+                finishOutcome({ bossOutcome: 'won', bossLoot });
+            }, 500);
+        }
         watchdogTimer = setInterval(() => {
             if (!state.running || isTransitioning) return;
             if (Date.now() - lastActivity <= WATCHDOG_SILENCE_MS) return;
@@ -1235,6 +1251,77 @@
         pauseFarm(`⚠️ ${message} Automação pausada para evitar uma transição incorreta.`);
     }
 
+    function getBossVictory() {
+        const victory = document.querySelector('.bvic-window');
+        return isElementVisible(victory)
+            && victory.querySelector('.bvic-desc b')?.textContent.trim() === state.bossName ? victory : null;
+    }
+
+    function teamIsHealed() {
+        const team = Array.from(document.querySelectorAll('.phud-mon'));
+        return team.length > 0 && team.every(mon => {
+            const hp = mon.querySelector('.sbar-hp .sbar-txt')?.textContent.match(/^(\d+)\/(\d+)$/);
+            return hp && Number(hp[2]) > 0 && hp[1] === hp[2];
+        });
+    }
+
+    function completeOutcome(won) {
+        isTransitioning = false;
+        if (won && state.running && !state.stopping) {
+            enterBoss();
+        } else {
+            state.running = false;
+            state.stopping = false;
+            clearWatchdog();
+            setMessage(won
+                ? '🛑 Automação encerrada após confirmar a recompensa e curar o time.'
+                : '🛑 Automação pausada após derrota. Inicie manualmente para retomar.', !won);
+        }
+        saveState();
+        renderPanel();
+    }
+
+    async function finishOutcomeThroughWindow(generation) {
+        try {
+            const victory = await waitForDom(getBossVictory, BOSS_DOM_TIMEOUT_MS, generation);
+            if (generation !== transitionGeneration) return;
+            const ok = victory?.querySelector('button.bvic-ok');
+            if (!ok || ok.disabled) throw new Error('A janela de vitória do boss selecionado não está pronta.');
+            ok.click();
+            const closed = await waitForDom(() => !document.querySelector('.bvic-window'), BOSS_DOM_TIMEOUT_MS, generation);
+            if (generation !== transitionGeneration) return;
+            if (!closed) throw new Error('O jogo não fechou a recompensa após OK.');
+
+            // Nesta captura, o primeiro Conversar abriu Nurse Joy. Nunca cure sem confirmar o nome.
+            let dialog = document.querySelector('.npc-dialog');
+            if (!dialog) {
+                const talk = await waitForDom(() => Array.from(document.querySelectorAll('button.npc-plate-btn'))
+                    .find(button => button.textContent.trim() === 'Conversar'), BOSS_DOM_TIMEOUT_MS, generation);
+                if (generation !== transitionGeneration) return;
+                if (!talk || talk.disabled) throw new Error('Conversa da Nurse Joy indisponível em Cerulean.');
+                talk.click();
+                dialog = await waitForDom(() => document.querySelector('.npc-dialog'), BOSS_DOM_TIMEOUT_MS, generation);
+            }
+            if (generation !== transitionGeneration) return;
+            if (dialog?.querySelector('.npc-dlg-name')?.textContent.trim() !== 'Nurse Joy') {
+                throw new Error('O NPC aberto não é Nurse Joy. Nenhuma cura será enviada.');
+            }
+            const heal = Array.from(dialog.querySelectorAll('button.npc-dlg-btn'))
+                .find(button => button.textContent.trim() === '💊 Curar equipe');
+            if (!heal || heal.disabled) throw new Error('Curar equipe está indisponível.');
+            heal.click();
+            // HP já estava cheio antes de OK na captura: exigir também o encerramento do diálogo.
+            const healed = await waitForDom(() => !document.querySelector('.npc-dialog') && teamIsHealed(),
+                BOSS_DOM_TIMEOUT_MS, generation);
+            if (generation !== transitionGeneration) return;
+            if (!healed) throw new Error('A interface não confirmou o encerramento da cura e HP completo.');
+            completeOutcome(true);
+        } catch (error) {
+            if (generation !== transitionGeneration) return;
+            failOutcomeCleanup(error?.message || String(error));
+        }
+    }
+
     function finishOutcome(message) {
         isTransitioning = true;
         const generation = ++transitionGeneration;
@@ -1248,11 +1335,23 @@
             setMessage('🏆 Boss derrotado! Saindo para curar o time...');
         } else {
             state.losses += 1;
-            setMessage('🔴 Boss finalizado com derrota. Saindo para curar o time...', true);
+            state.running = false;
+            state.stopping = false;
+            clearWatchdog();
+            setMessage('🔴 Derrota no Boss. Automação pausada; saindo para curar o time...', true);
         }
 
         saveState();
         renderPanel();
+        if (!state.useWebSocket) {
+            if (won) {
+                void finishOutcomeThroughWindow(generation);
+            } else {
+                // O fluxo visual de derrota não foi capturado. Pause sem inventar ações de saída/cura.
+                completeOutcome(false);
+            }
+            return;
+        }
         if (!sendWs({ type: 'leave-hunt' })) {
             failOutcomeCleanup('Não foi possível enviar leave-hunt.');
             return;
@@ -1263,19 +1362,23 @@
                 failOutcomeCleanup('Não foi possível enviar joy-heal.');
                 return;
             }
-            setMessage('🏥 Time curado. Preparando o próximo passo...');
+            setMessage(won
+                ? '🏥 Time curado. Preparando o próximo passo...'
+                : '🏥 Time curado. Automação pausada após derrota.', !won);
             saveState();
             renderPanel();
 
             scheduleTransitionStep(generation, () => {
                 isTransitioning = false;
-                if (state.running && !state.stopping) {
+                if (won && state.running && !state.stopping) {
                     if (!enterBoss()) return;
                 } else {
                     state.running = false;
                     state.stopping = false;
                     clearWatchdog();
-                    setMessage('🛑 Automação encerrada após sair e curar o time.');
+                    setMessage(won
+                        ? '🛑 Automação encerrada após sair e curar o time.'
+                        : '🛑 Automação pausada após derrota. Time curado; inicie manualmente para retomar.', !won);
                 }
                 saveState();
                 renderPanel();
@@ -1498,7 +1601,7 @@
                 <label class="pba-option" for="pba-use-websocket">
                     <input type="checkbox" id="pba-use-websocket" /> Entrar via WebSocket
                 </label>
-                <div class="pba-option-help">Desmarcado: abre Bosses, seleciona o nome e clica em Challenge Boss. A entrada consome os Boss Tokens indicados pelo jogo. Marcado: entra no Boss selecionado diretamente via WebSocket.</div>
+                <div class="pba-option-help">Desmarcado: desafia pelos botões do jogo, confirma a vitória e cura com Nurse Joy. A entrada consome os Boss Tokens indicados pelo jogo. Marcado: usa WebSocket. Derrota pausa sem iniciar outro boss.</div>
                 <div class="pba-entry-help" hidden></div>
                 <div class="pba-summary">
                     <span>🏆 <b id="pba-wins" class="text-green">0</b></span>
