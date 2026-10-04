@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Auto Boss Farmer PIW
-// @version      1.6.5
+// @version      1.6.7
 // @description  Painel para farmar Bosses com HUD, cura entre lutas e parada agendada.
 // @author       Luis
 // @match        https://poke.idleworld.online/play
@@ -940,6 +940,7 @@
             useWebSocket: false,
             wins: 0,
             losses: 0,
+            aoeTmPieces: 0,
             running: false,
             stopping: false,
             lastMessage: 'Aguardando inicialização...',
@@ -976,6 +977,7 @@
                 useWebSocket: saved.useWebSocket === true,
                 wins: normalizeCount(saved.wins),
                 losses: normalizeCount(saved.losses),
+                aoeTmPieces: normalizeCount(saved.aoeTmPieces),
                 running: false,
                 stopping: false,
                 lastMessage: typeof saved.lastMessage === 'string'
@@ -997,6 +999,7 @@
                 useWebSocket: state.useWebSocket,
                 wins: state.wins,
                 losses: state.losses,
+                aoeTmPieces: state.aoeTmPieces,
                 lastMessage: state.lastMessage,
                 lootHistory: state.lootHistory
             }));
@@ -1019,6 +1022,7 @@
             lastMessage: state.lastMessage,
             wins: state.wins,
             losses: state.losses,
+            aoeTmPieces: state.aoeTmPieces,
             lastActivityAt: lastActivity,
             lootHistory: [...state.lootHistory]
         };
@@ -1255,6 +1259,16 @@
         }).join(', ');
     }
 
+    function countAoeTmPieces(loot) {
+        if (!Array.isArray(loot)) return 0;
+        return loot.reduce((total, item) => {
+            if (typeof item?.name !== 'string' || item.name.trim() !== 'AoE TM Disk Piece') return total;
+            if (typeof item.qty !== 'number' && typeof item.qty !== 'string') return total;
+            const quantity = Number(item.qty);
+            return Number.isSafeInteger(quantity) && quantity > 0 ? total + quantity : total;
+        }, 0);
+    }
+
     function failOutcomeCleanup(message) {
         pauseFarm(`⚠️ ${message} Automação pausada para evitar uma transição incorreta.`);
     }
@@ -1279,9 +1293,17 @@
             .find(button => button.textContent.trim() === 'Conversar' && !button.disabled);
     }
 
-    async function awaitTownConversation(generation) {
-        let talk = await waitForDom(getTownConversation, TOWN_RETURN_GRACE_MS, generation);
-        if (generation !== transitionGeneration || talk) return talk;
+    function getTownRecovery() {
+        // Na captura real, o HP já estava completo antes de aceitar a vitória.
+        // Não confunda ausência do botão do NPC com ausência de cura.
+        if (teamIsHealed() && !document.querySelector('.npc-dialog')) return { healed: true };
+        const talk = getTownConversation();
+        return talk ? { talk } : null;
+    }
+
+    async function awaitTownRecovery(generation) {
+        let recovery = await waitForDom(getTownRecovery, TOWN_RETURN_GRACE_MS, generation);
+        if (generation !== transitionGeneration || recovery) return recovery;
         // OK fecha a recompensa; nem toda sessão já retornou à cidade nesse momento.
         const home = await waitForDom(() => {
             const button = document.querySelector('button[data-guide="dock-home"]');
@@ -1290,10 +1312,10 @@
         if (generation !== transitionGeneration) return null;
         if (!home) throw new Error('Voltar para Cerulean está indisponível.');
         // A conversa pode ter aparecido enquanto aguardávamos o botão de retorno.
-        talk = getTownConversation();
-        if (talk) return talk;
+        recovery = getTownRecovery();
+        if (recovery) return recovery;
         home.click();
-        return waitForDom(getTownConversation, BOSS_DOM_TIMEOUT_MS, generation);
+        return waitForDom(getTownRecovery, BOSS_DOM_TIMEOUT_MS, generation);
     }
 
     function completeOutcome(won) {
@@ -1323,12 +1345,22 @@
             if (generation !== transitionGeneration) return;
             if (!closed) throw new Error('O jogo não fechou a recompensa após OK.');
 
+            if (teamIsHealed() && !document.querySelector('.npc-dialog')) {
+                completeOutcome(true);
+                return;
+            }
+
             // Nesta captura, o primeiro Conversar abriu Nurse Joy. Nunca cure sem confirmar o nome.
             let dialog = document.querySelector('.npc-dialog');
             if (!dialog) {
-                const talk = await awaitTownConversation(generation);
+                const recovery = await awaitTownRecovery(generation);
                 if (generation !== transitionGeneration) return;
-                if (!talk || talk.disabled) throw new Error('Conversa da Nurse Joy indisponível em Cerulean.');
+                if (recovery?.healed) {
+                    completeOutcome(true);
+                    return;
+                }
+                const talk = recovery?.talk;
+                if (!talk || talk.disabled) throw new Error('O time ainda precisa de cura, mas a conversa da Nurse Joy não apareceu após retornar a Cerulean.');
                 talk.click();
                 dialog = await waitForDom(() => document.querySelector('.npc-dialog'), BOSS_DOM_TIMEOUT_MS, generation);
             }
@@ -1359,6 +1391,7 @@
 
         if (won) {
             state.wins += 1;
+            state.aoeTmPieces += countAoeTmPieces(message.bossLoot);
             const time = new Date().toLocaleTimeString('pt-BR');
             state.lootHistory.unshift(`[${time}] ${buildLootText(message)}`);
             state.lootHistory = state.lootHistory.slice(0, 10);
@@ -1559,6 +1592,7 @@
     function resetStats() {
         state.wins = 0;
         state.losses = 0;
+        state.aoeTmPieces = 0;
         state.lootHistory = [];
         saveState();
         renderPanel();
@@ -1593,6 +1627,7 @@
 
         panel.querySelector('#pba-wins').textContent = String(state.wins);
         panel.querySelector('#pba-losses').textContent = String(state.losses);
+        panel.querySelector('#pba-aoe-tm-pieces').textContent = String(state.aoeTmPieces);
         const bossInput = panel.querySelector('#pba-boss-name');
         bossInput.value = state.bossName;
         bossInput.disabled = state.running || isTransitioning;
@@ -1636,6 +1671,7 @@
                 <div class="pba-summary">
                     <span>🏆 <b id="pba-wins" class="text-green">0</b></span>
                     <span>💀 <b id="pba-losses" class="text-red">0</b></span>
+                    <span title="AoE TM Disk Piece acumuladas" aria-label="AoE TM Disk Piece acumuladas">🧩 AoE <b id="pba-aoe-tm-pieces" class="text-gold">0</b></span>
                     <button class="pba-reset" type="button" title="Zerar estatísticas">🔄</button>
                 </div>
                 <div class="pba-actions">
@@ -1715,9 +1751,11 @@
             #piw-boss-panel .pba-option { display:flex;align-items:center;gap:7px;cursor:pointer; }
             #piw-boss-panel .pba-option-help { color:#a0aec0;font-size:11px;margin:5px 0 10px; }
             #piw-boss-panel .pba-entry-help { color:#fbd38d;font-size:11px;margin-bottom:10px; }
-            #piw-boss-panel .pba-summary { display:flex;align-items:center;justify-content:space-around;background:#101f2a;border:1px solid #20394b;border-radius:8px;padding:9px 11px;margin-bottom:8px;font-size:16px; }
+            #piw-boss-panel .pba-summary { display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-around;background:#101f2a;border:1px solid #20394b;border-radius:8px;padding:9px 11px;margin-bottom:8px;font-size:16px; }
+            #piw-boss-panel .pba-summary > span { white-space:nowrap; }
             #piw-boss-panel .text-green { color:#48bb78; }
             #piw-boss-panel .text-red { color:#f56565; }
+            #piw-boss-panel .text-gold { color:#d6b35c; }
             #piw-boss-panel .pba-reset { padding:2px 6px;font-size:12px;background:transparent;border:1px solid #4a5568; }
             #piw-boss-panel .pba-actions { display:flex;gap:6px; }
             #piw-boss-panel .pba-actions button { flex:1;padding:10px;font-size:14px;transition:background-color .2s; }

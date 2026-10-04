@@ -33,6 +33,10 @@ function createHarness(savedState = { useWebSocket: true }, {
     homeRequired = false,
     homeAvailable = true,
     townReadyDelayMs = 0,
+    alreadyHealed = false,
+    autoHealDelayMs = 0,
+    teamAvailable = true,
+    visualLoot = [],
 } = {}) {
     let now = 0;
     let nextTimerId = 1;
@@ -44,7 +48,7 @@ function createHarness(savedState = { useWebSocket: true }, {
     let altarSelected = altarInitiallySelected;
     let victoryOpen = pendingVictory;
     let dialogOpen = false;
-    let healed = true;
+    let healed = alreadyHealed;
     let townReady = !homeRequired;
     let windowOpenedAt = 0;
     let challengeReadyAt = 0;
@@ -156,6 +160,7 @@ function createHarness(savedState = { useWebSocket: true }, {
             if (selector === '.bvic-desc b') return { textContent: victoryBossName };
             if (selector === 'button.bvic-ok') return { click() {
                 clicks.push('OK'); victoryOpen = false;
+                if (autoHealDelayMs) setTimer(() => { healed = true; }, autoHealDelayMs, 0);
                 if (!homeRequired && townReadyDelayMs) {
                     townReady = false;
                     setTimer(() => { townReady = true; }, townReadyDelayMs, 0);
@@ -163,7 +168,15 @@ function createHarness(savedState = { useWebSocket: true }, {
             } };
             return null;
         },
-        querySelectorAll() { return []; },
+        querySelectorAll(selector) {
+            return selector === '.bvic-chip' ? visualLoot.map(item => ({
+                querySelector(childSelector) {
+                    if (childSelector === '.bvic-chip-name') return { textContent: item.name };
+                    if (childSelector === '.bvic-chip-qty') return { textContent: `×${item.qty}` };
+                    return null;
+                },
+            })) : [];
+        },
     };
     const joyDialog = {
         querySelector(selector) { return selector === '.npc-dlg-name' ? { textContent: npcName } : null; },
@@ -210,7 +223,7 @@ function createHarness(savedState = { useWebSocket: true }, {
                 if (selector === 'button.npc-plate-btn' && joyAvailable && townReady) return [{
                     textContent: 'Conversar', click() { clicks.push('Conversar'); dialogOpen = true; },
                 }];
-                if (selector === '.phud-mon') return [{ querySelector() {
+                if (selector === '.phud-mon' && teamAvailable) return [{ querySelector() {
                     return { textContent: healed ? '16884/16884' : '8300/16884' };
                 } }];
                 return [];
@@ -932,5 +945,101 @@ test('uninstall durante retorno cancela cura e reentrada mesmo quando NPC aparec
     assert.deepEqual(harness.clicks.slice(3), ['OK', 'Voltar para Cerulean']);
     assert.equal(harness.api.status().running, false);
     assert.equal(harness.api.status().transitioning, false);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt']);
+});
+
+test('HP completo após OK confirma recuperação mesmo sem botão da Nurse Joy', async () => {
+    const harness = createHarness(null, { alreadyHealed: true, joyAvailable: false, homeAvailable: false });
+    const socket = harness.captureSocket();
+    harness.api.start();
+    await harness.settle();
+    harness.api.stop();
+    socket.emit('message', { type: 'field', bossOutcome: 'won' });
+    await harness.settle();
+    assert.equal(harness.api.status().running, false);
+    assert.equal(harness.api.status().transitioning, false);
+    assert.deepEqual(harness.clicks.slice(3), ['OK']);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt']);
+});
+
+test('HP recuperado durante retorno confirma cura e não exige NPC que não apareceu', async () => {
+    const harness = createHarness(null, { autoHealDelayMs: 2500, joyAvailable: false, homeRequired: true });
+    const socket = harness.captureSocket();
+    harness.api.start();
+    await harness.settle();
+    harness.api.stop();
+    socket.emit('message', { type: 'field', bossOutcome: 'won' });
+    await harness.tickAsync(3000);
+    assert.equal(harness.api.status().running, false);
+    assert.equal(harness.api.status().transitioning, false);
+    assert.deepEqual(harness.clicks.slice(3), ['OK', 'Voltar para Cerulean']);
+    assert.deepEqual(sentTypes(socket), ['enter-hunt']);
+});
+
+test('time ferido ou HUD ausente não confirma cura nem consome outro token', async () => {
+    for (const teamAvailable of [true, false]) {
+        const harness = createHarness(null, { joyAvailable: false, teamAvailable });
+        const socket = harness.captureSocket();
+        harness.api.start();
+        await harness.settle();
+        socket.emit('message', { type: 'field', bossOutcome: 'won' });
+        await harness.tickAsync(12000);
+        assert.equal(harness.api.status().running, false);
+        assert.equal(harness.api.status().transitioning, false);
+        assert.match(harness.api.status().lastMessage, /time ainda precisa de cura/);
+        assert.equal(harness.clickedSlugs.length, 1);
+        assert.deepEqual(sentTypes(socket), ['enter-hunt']);
+    }
+});
+
+test('soma quantidades de AoE de cada vitória uma vez e preserva entre ciclos e reload', () => {
+    const harness = createHarness({ useWebSocket: true, aoeTmPieces: 4 });
+    const socket = harness.captureSocket();
+    harness.api.start();
+    const won = { type: 'field', bossOutcome: 'won', bossLoot: [
+        { name: 'AoE TM Disk Piece', qty: 2 }, { name: 'Water Stone', qty: 3 },
+        { name: 'AoE TM Disk Piece', qty: '1' },
+    ] };
+    socket.emit('message', won);
+    socket.emit('message', won);
+    assert.equal(harness.api.status().aoeTmPieces, 7);
+    harness.tick(3000);
+    socket.emit('message', { type: 'field', bossOutcome: 'won', bossLoot: [{ name: 'AoE TM Disk Piece', qty: 5 }] });
+    assert.equal(harness.api.status().aoeTmPieces, 12);
+    const saved = JSON.parse(harness.storage.get('piw_boss_farm_v1'));
+    assert.equal(saved.aoeTmPieces, 12);
+    const restored = createHarness(saved);
+    assert.equal(restored.api.status().aoeTmPieces, 12);
+    assert.equal(restored.api.status().running, false);
+    assert.equal(restored.api.resetStats().aoeTmPieces, 0);
+    assert.equal(JSON.parse(restored.storage.get('piw_boss_farm_v1')).aoeTmPieces, 0);
+});
+
+test('contador ignora derrota, loot ausente, itens diferentes e quantidades inválidas', () => {
+    for (const bossOutcome of ['won', 'lost']) {
+        const harness = createHarness();
+        const socket = harness.captureSocket();
+        harness.api.start();
+        socket.emit('message', { type: 'field', bossOutcome, bossLoot: [
+            ...[-1, 0, 1.5, 'inválido', null, true].map(qty => ({ name: 'AoE TM Disk Piece', qty })),
+            { name: 'TM Disk Piece', qty: 20 }, { name: 'AoE TM Disk Piece', qty: bossOutcome === 'lost' ? 2 : 0 },
+        ] });
+        assert.equal(harness.api.status().aoeTmPieces, 0);
+    }
+    for (const aoeTmPieces of [undefined, -3, 'inválido']) {
+        assert.equal(createHarness({ aoeTmPieces, lootHistory: ['[12:00] 5x AoE TM Disk Piece'] }).api.status().aoeTmPieces, 0);
+    }
+});
+
+test('contador soma AoE do loot visual mesmo sem resultado WebSocket', async () => {
+    const harness = createHarness(null, { alreadyHealed: true, visualLoot: [{ name: 'AoE TM Disk Piece', qty: 3 }] });
+    const socket = harness.captureSocket();
+    harness.api.start();
+    await harness.settle();
+    harness.api.stop();
+    harness.showVictory();
+    await harness.tickAsync(1000);
+    assert.equal(harness.api.status().aoeTmPieces, 3);
+    assert.equal(harness.api.status().wins, 1);
     assert.deepEqual(sentTypes(socket), ['enter-hunt']);
 });
